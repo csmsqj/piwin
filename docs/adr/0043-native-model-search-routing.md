@@ -274,6 +274,23 @@ delegate whose declared shape is not expressible is not "ready" and fails
 closed). The main-session blueprint path initially resolved by protocol only
 and was repaired on 2026-08-13 with regression coverage.
 
+## 2026-09-28 generation DuckDuckGo floor
+
+A model that is not tagged `native-web-search`, with every search source off,
+used to leave the generation with no `web_search` tool. Before route resolution
+and tool registration, that generation's in-memory web config enables
+DuckDuckGo when all of the following hold:
+
+- the chat model's native search is not ready;
+- no `searchDelegateModel` is configured;
+- no search source is enabled;
+- the generation policy is not `native-only`.
+
+The call then uses the normal DuckDuckGo source. The saved settings switch
+stays as the user left it, and the settings route preview does not apply this
+floor. A model with native search ready still follows `native-first` and does
+not receive the external tool. A source the user enabled stays the source.
+
 Known limitations (recorded intentionally):
 
 - `nativeSearchAdapter` is config.json-only; the Desktop model editor and CLI

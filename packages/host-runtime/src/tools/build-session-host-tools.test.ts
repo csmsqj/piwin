@@ -84,6 +84,71 @@ describe('buildSessionHostTools artifact_instructions', () => {
   });
 });
 
+describe('buildSessionHostTools web_search floor', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('calls DuckDuckGo when the model has no native search and the switch is off', async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), 'piwin-web-ddg-floor-'));
+    const urls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      (async (input: unknown) => {
+        urls.push(String(input));
+        return new Response('{"Results":[],"RelatedTopics":[]}', { status: 200 });
+      }) as typeof fetch,
+    );
+    const web = {
+      ...createDefaultWebConfig(),
+      searchSources: [{ id: 'duckduckgo' as const, kind: 'duckduckgo' as const, enabled: false }],
+      searchRoutePolicy: 'native-first' as const,
+    };
+    try {
+      const tools = await buildSessionHostTools({
+        sessionId: 'session-ddg-floor',
+        piwinRoot: rootDir,
+        model: {
+          protocol: 'google-gemini',
+          providerId: 'gemini',
+          modelId: 'gemini-flash',
+        },
+        config: {
+          ...createDefaultPiwinConfig(),
+          providers: [
+            {
+              id: 'gemini',
+              protocol: 'google-gemini',
+              name: 'Gemini',
+              baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+              models: [{ id: 'gemini-flash', capabilities: ['chat'] }],
+            },
+          ],
+          web,
+        },
+      });
+      const search = tools.find((tool) => tool.descriptor.name === 'web_search');
+      if (!search) {
+        throw new Error('web_search missing');
+      }
+      const context: HostToolExecutionContext = {
+        sessionId: 'session-ddg-floor',
+        runtimeGenerationId: 'generation-1',
+        runId: 'run-1',
+        toolName: 'web_search',
+      };
+      const result = await search.execute({ query: 'piwin' }, new AbortController().signal, context);
+      if (!result.ok) {
+        throw new Error(result.message);
+      }
+      expect(urls.some((url) => url.includes('duckduckgo.com'))).toBe(true);
+      expect(web.searchSources[0]?.enabled).toBe(false);
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('buildSessionHostTools web_search credentials', () => {
   afterEach(() => {
     vi.unstubAllGlobals();

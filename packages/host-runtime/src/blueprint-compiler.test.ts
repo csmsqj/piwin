@@ -442,9 +442,9 @@ describe('compileBlueprintForWorker', () => {
     expect(hostToolNames).toContain('bash');
   });
 
-  it('does not advertise web search when every search source is disabled', async () => {
+  it('advertises web_search via DuckDuckGo when no source is enabled and the model has no native search', async () => {
     const web = createDefaultWebConfig();
-    web.searchSources = web.searchSources.map((source) => ({ ...source, enabled: false }));
+    web.searchSources = [{ id: 'duckduckgo', kind: 'duckduckgo', enabled: false }];
     const result = await compileBlueprintForWorker(
       { scope: generalScope },
       {
@@ -467,9 +467,11 @@ describe('compileBlueprintForWorker', () => {
       },
     );
 
-    expect(result.blueprint.tools.enabledFamilies).not.toContain('web-search');
+    expect(web.searchSources[0]?.enabled).toBe(false);
+    expect(result.blueprint.searchRoute?.selected).toBe('external');
+    expect(result.blueprint.tools.enabledFamilies).toContain('web-search');
     expect(result.blueprint.tools.enabledFamilies).toContain('web-fetch');
-    expect(result.blueprint.tools.hostTools.map((tool) => tool.name)).not.toContain('web_search');
+    expect(result.blueprint.tools.hostTools.map((tool) => tool.name)).toContain('web_search');
     expect(result.blueprint.tools.hostTools.map((tool) => tool.name)).toContain('web_fetch');
   });
 

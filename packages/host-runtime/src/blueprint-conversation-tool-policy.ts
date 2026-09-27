@@ -12,6 +12,7 @@ import {
   familyHasKnowledgeTools,
   projectModelHostTools,
 } from './blueprint-tool-capability.js';
+import { webConfigWithDuckDuckGoFloor } from './capabilities/duckduckgo-search-floor.js';
 import {
   findConfiguredModel,
   findReadyWebSearchDelegate,
@@ -45,13 +46,20 @@ export function compileConversationToolPolicy(
 } {
   const resolvedWebConfig = config.web ? resolveWebConfig(config.web) : undefined;
   const configuredModel = findConfiguredModel(config, input.model);
+  const searchAdapter = resolveNativeSearchAdapterSupport(
+    configuredModel?.provider.protocol,
+    configuredModel?.model.nativeSearchAdapter,
+  );
+  const webForRoute = resolvedWebConfig
+    ? webConfigWithDuckDuckGoFloor(resolvedWebConfig, {
+        model: configuredModel?.model ?? null,
+        adapter: searchAdapter,
+      })
+    : config.web;
   const searchRoute = resolveSearchRoute({
     model: configuredModel?.model ?? null,
-    web: resolvedWebConfig ?? config.web,
-    adapter: resolveNativeSearchAdapterSupport(
-      configuredModel?.provider.protocol,
-      configuredModel?.model.nativeSearchAdapter,
-    ),
+    web: webForRoute,
+    adapter: searchAdapter,
     externalDelegateReady: Boolean(findReadyWebSearchDelegate(config)),
   });
   const webSearchReady = shouldExposeExternalWebSearch(searchRoute);

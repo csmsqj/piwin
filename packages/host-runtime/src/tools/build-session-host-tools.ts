@@ -64,6 +64,7 @@ import {
   type McpLifecycleManager,
 } from '@piwin/mcp';
 import { resolveWebConfig, type FetchCache } from '@piwin/tools-web';
+import { webConfigWithDuckDuckGoFloor } from '../capabilities/duckduckgo-search-floor.js';
 import {
   findConfiguredModel,
   resolveNativeSearchAdapterSupport,
@@ -223,8 +224,17 @@ export async function buildSessionHostTools(
     const webCredentials = options.secretResolver
       ? await resolveWebRuntimeCredentials(options.config.web, options.secretResolver)
       : undefined;
+    const configuredModel = findConfiguredModel(options.config, options.model);
+    const searchAdapter = resolveNativeSearchAdapterSupport(
+      configuredModel?.provider.protocol,
+      configuredModel?.model.nativeSearchAdapter,
+    );
+    const webForGeneration = webConfigWithDuckDuckGoFloor(resolveWebConfig(options.config.web), {
+      model: configuredModel?.model ?? null,
+      adapter: searchAdapter,
+    });
     const webRegistration = buildSessionTools({
-      webConfig: options.config.web,
+      webConfig: webForGeneration,
       ...(webCredentials ? { webCredentials } : {}),
       ...(webSearchDelegate ? { webSearchDelegate } : {}),
       ...(webFetchExtractDelegate ? { webFetchExtractDelegate } : {}),
@@ -236,14 +246,10 @@ export async function buildSessionHostTools(
       searchLog: getWebSearchLogStore(rootDir),
       ...(options.fetchCache ? { fetchCache: options.fetchCache } : {}),
     });
-    const configuredModel = findConfiguredModel(options.config, options.model);
     const searchRoute = resolveSearchRoute({
       ...(configuredModel?.model ? { model: configuredModel.model } : {}),
-      web: resolveWebConfig(options.config.web),
-      adapter: resolveNativeSearchAdapterSupport(
-        configuredModel?.provider.protocol,
-        configuredModel?.model.nativeSearchAdapter,
-      ),
+      web: webForGeneration,
+      adapter: searchAdapter,
       externalDelegateReady: Boolean(webSearchDelegate),
     });
     const webSearchReady = shouldExposeExternalWebSearch(searchRoute);

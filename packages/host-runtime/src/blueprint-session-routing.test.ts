@@ -22,6 +22,55 @@ import {
 } from './blueprint-compiler-test-fixtures.js';
 
 describe('search route resolution', () => {
+  it('keeps web_search off when native search is ready and no external source is enabled', async () => {
+    const web = {
+      ...createDefaultWebConfig(),
+      searchSources: [],
+      searchRoutePolicy: 'native-first' as const,
+    };
+    const webSearchDescriptor = {
+      name: 'web_search',
+      description: 'Search the web',
+      parameters: {},
+    };
+    const config = createConfig({
+      web,
+      providers: [
+        {
+          id: 'gemini',
+          protocol: 'google-gemini' as const,
+          name: 'Gemini',
+          baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+          models: [{ id: 'gemini-flash', capabilities: ['chat', 'native-web-search'] }],
+        },
+      ],
+    });
+
+    const result = await compileBlueprintForWorker(
+      {
+        scope: generalScope,
+        model: {
+          protocol: 'google-gemini',
+          providerId: 'gemini',
+          modelId: 'gemini-flash',
+        },
+      },
+      {
+        config,
+        discoverResources: async () => ({ skillPaths: [], extensionPaths: [], promptPaths: [] }),
+        hostToolDescriptors: [webSearchDescriptor],
+        hostToolFamilyIndex: createFamilyIndex(
+          [webSearchDescriptor],
+          familyAssignments([['web-search', ['web_search']]]),
+        ),
+      },
+    );
+
+    expect(result.blueprint.searchRoute?.selected).toBe('native');
+    expect(result.blueprint.tools.hostTools.map((tool) => tool.name)).not.toContain('web_search');
+    expect(web.searchSources).toEqual([]);
+  });
+
   it('selects native search and hides the external web_search tool when the policy is native-first', async () => {
     const web = createExternalSearchWebConfig('native-first');
     const webSearchDescriptor = {
