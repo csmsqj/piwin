@@ -12,6 +12,7 @@ export const V1_SUBSCRIPTION_PROVIDER_IDS = [
   'xai',
   'github-copilot',
   'devin',
+  'commandcode',
 ] as const;
 
 export type V1SubscriptionProviderId = (typeof V1_SUBSCRIPTION_PROVIDER_IDS)[number];
@@ -230,6 +231,7 @@ export const V1_SUBSCRIPTION_PROVIDER_META: Record<
   xai: { name: 'Grok', oauthOrigin: 'oauth://xai' },
   'github-copilot': { name: 'GitHub Copilot', oauthOrigin: 'oauth://github-copilot' },
   devin: { name: 'Devin', oauthOrigin: 'oauth://devin' },
+  commandcode: { name: 'Command Code', oauthOrigin: 'oauth://commandcode' },
 };
 
 export const CLAUDE_CODE_OAUTH_PROVIDER_META = {

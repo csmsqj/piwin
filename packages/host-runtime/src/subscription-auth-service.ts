@@ -1,6 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { watch, type FSWatcher } from 'node:fs';
-import { dirname } from 'node:path';
 import type {
   ActiveLoginStatus,
   AuthLoginFinishedData,
@@ -14,10 +12,7 @@ import type {
 } from '@piwin/contracts';
 import {
   AUTH_LOGIN_IDLE_MS,
-  AUTH_UPDATED_DEBOUNCE_MS,
   allocateRelocateChannelId,
-  isModelEnabled,
-  isProviderEnabled,
   isV1SubscriptionProviderId,
   isSubscriptionOauthProviderId,
   isClaudeCodeOauthProviderId,
@@ -39,16 +34,18 @@ import { applySubscriptionSettings } from './apply-subscription-settings.js';
 import { loadPiwinConfig } from './config-store.js';
 import { getPiwinRoot, resolveHostPiAgentDir } from './paths.js';
 import { rewriteChannelModelRefs } from './rewrite-channel-model-refs.js';
-import { buildSubscriptionAccounts, findCollidingChannelId } from './subscription-account-status.js';
+import { buildSubscriptionAccounts, findCollidingChannelId, oauthProviderIds } from './subscription-account-status.js';
 import { applyDevinLogoutWebSearch, applySubscriptionLoginDefaults } from './subscription-login-defaults.js';
 import { isSubscriptionAccountUsable } from './resolve-chat-model.js';
 import {
   ensureSubscriptionProviders,
-  overlayCatalogLimits,
   upsertSubscriptionProvider,
 } from './seed-subscription-provider.js';
 import { resolveConfiguredDefaultModelRef } from './provider-helpers.js';
 import { selectSubscriptionLoginMethod } from './select-subscription-login-method.js';
+import { readSubscriptionExtensionProviders } from './subscription-extension-providers.js';
+import { SubscriptionAuthWatcher } from './subscription-auth-watcher.js';
+import { mergeSubscriptionCatalogModels, type ConfiguredChatModels } from './subscription-model-overlay.js';
 import { assertCodexCallbackPortFree } from './subscription-oauth-callback-port.js';
 import type { ResolveChatModelAccounts } from './resolve-chat-model.js';
 
@@ -85,6 +82,9 @@ const LIVE_ACCOUNT_STATES = new Set(['logged-in', 'logging-in', 'sync-error', 'n
 
 export class SubscriptionAuthService {
   private port: SubscriptionAuthPort | undefined;
+  private portExtensionFingerprint: string | undefined;
+  private extensionProjectionPending = false;
+  private readonly reloadPortOnExtensions: boolean;
   private readonly portFactory: () => Promise<SubscriptionAuthPort>;
   private readonly loadConfig: () => Promise<PiwinConfig>;
   private readonly saveConfig: (config: PiwinConfig) => Promise<void>;
@@ -99,10 +99,7 @@ export class SubscriptionAuthService {
   private cancelRuns: ((providerId: string) => Promise<void>) | undefined;
   private relocatePersist: ((fromProviderId: string, toProviderId: string) => Promise<void>) | undefined;
   private active: ActiveLogin | undefined;
-  private watcher: FSWatcher | undefined;
-  private watchTimer: ReturnType<typeof setTimeout> | undefined;
-  private watchRetry: ReturnType<typeof setTimeout> | undefined;
-  private watchingParent = false;
+  private readonly credentialWatcher: SubscriptionAuthWatcher;
   private lastFingerprint = '';
   private lastOauthProviderIds = new Set<string>();
   private readonly syncErrorProviderIds = new Set<string>();
@@ -126,11 +123,13 @@ export class SubscriptionAuthService {
     });
     const paths = defaultPiAuthPaths(agentDir);
     this.authPath = paths.authPath;
+    this.credentialWatcher = new SubscriptionAuthWatcher(this.authPath, () => this.emitUpdatedIfChanged());
     this.now = options.now ?? Date.now;
     this.openAuthUrl = options.openAuthUrl;
     this.loadConfig =
       deps.loadConfig ?? (() => loadPiwinConfig(getPiwinRoot(options.piwinRoot)));
     this.externalConfigStore = deps.applySettings !== undefined || deps.saveConfig !== undefined;
+    this.reloadPortOnExtensions = options.port === undefined && deps.createPort === undefined;
     this.saveConfig =
       deps.applySettings ??
       deps.saveConfig ??
@@ -144,14 +143,13 @@ export class SubscriptionAuthService {
       });
     this.piwinRoot = options.piwinRoot;
     this.port = options.port;
-    this.portFactory =
-      deps.createPort ??
-      (async () =>
-        options.port ??
-        createSubscriptionAuthPort({
-          authPath: paths.authPath,
-          modelsPath: paths.modelsPath,
-        }));
+    this.portFactory = deps.createPort ?? (async () =>
+      options.port ?? createSubscriptionAuthPort({
+        authPath: paths.authPath,
+        modelsPath: paths.modelsPath,
+        extensionPaths: (await readSubscriptionExtensionProviders(getPiwinRoot(options.piwinRoot)))
+          .map((provider) => provider.entryPath),
+      }));
   }
 
   bindPush(push: (message: HostPush) => void): void {
@@ -209,7 +207,12 @@ export class SubscriptionAuthService {
   }
 
   async chatResolveInput(): Promise<ResolveChatModelAccounts> {
-    const accounts = await this.readAccounts();
+    let accounts = await this.readAccounts();
+    if (this.extensionProjectionPending) {
+      await this.projectLoggedInProviders();
+      this.extensionProjectionPending = false;
+      accounts = await this.readAccounts();
+    }
     this.lastOauthProviderIds = oauthProviderIds(accounts);
     const catalogModelIds = new Map<string, readonly string[]>();
     for (const account of accounts) {
@@ -247,7 +250,12 @@ export class SubscriptionAuthService {
   }
 
   async status(): Promise<AuthStatusData> {
-    const accounts = await this.readAccounts();
+    let accounts = await this.readAccounts();
+    if (this.extensionProjectionPending) {
+      await this.projectLoggedInProviders();
+      this.extensionProjectionPending = false;
+      accounts = await this.readAccounts();
+    }
     const data: AuthStatusData = { accounts };
     if (this.active) {
       data.activeLogin = this.toActiveLoginStatus();
@@ -261,6 +269,12 @@ export class SubscriptionAuthService {
         error: `Unsupported subscription provider: ${input.providerId}`,
         code: 'unsupported-subscription-provider',
       };
+    }
+    if (input.providerId === 'commandcode' &&
+      !(await readSubscriptionExtensionProviders(getPiwinRoot(this.piwinRoot)))
+        .some((provider) => provider.providerId === 'commandcode')) {
+      return { error: 'Install and enable the Command Code extension first.',
+        code: 'unsupported-subscription-provider' };
     }
     if (this.active) {
       return { error: 'A subscription login is already in progress.', code: 'auth-busy' };
@@ -420,127 +434,18 @@ export class SubscriptionAuthService {
     return {};
   }
 
-  /**
-   * Overlay Pi catalog metadata onto the secret-free picker list.
-   * Do not resurrect providers/models the user disabled on the Models page:
-   * `projectConfiguredChatModels` already dropped them, and putting them back
-   * made Composer keep showing subscription rows after the toggle was turned off.
-   */
-  async mergeConfiguredModels(channelModels: {
-    defaultProviderId?: string;
-    defaultModelId?: string;
-    models: Array<Record<string, unknown>>;
-  }): Promise<{
-    defaultProviderId?: string;
-    defaultModelId?: string;
-    models: Array<Record<string, unknown>>;
-  }> {
-    const port = await this.ensurePort();
-    const accounts = await this.readAccounts();
-    const config = await this.loadConfig();
-    const providerById = new Map(
-      config.providers.map((provider) => [provider.id, provider] as const),
+  async mergeConfiguredModels(channelModels: ConfiguredChatModels): Promise<ConfiguredChatModels> {
+    await this.ensurePort();
+    return mergeSubscriptionCatalogModels(
+      channelModels,
+      await this.readAccounts(),
+      await this.loadConfig(),
+      (providerId) => this.chatCatalogFor(providerId),
     );
-    const models = [...channelModels.models];
-    const existing = new Set(models.map((model) => `${model.providerId}::${model.modelId}`));
-    for (const account of accounts) {
-      if (account.surface !== 'v1' || account.collidingChannelId) {
-        continue;
-      }
-      if (account.state !== 'logged-in' && account.state !== 'sync-error') {
-        continue;
-      }
-      const provider = providerById.get(account.providerId);
-      if (provider !== undefined && !isProviderEnabled(provider)) {
-        continue;
-      }
-      for (const model of this.chatCatalogFor(account.providerId)) {
-        const configuredModel = provider?.models.find((entry) => entry.id === model.id);
-        if (configuredModel !== undefined && !isModelEnabled(configuredModel)) {
-          continue;
-        }
-        const key = `${account.providerId}::${model.id}`;
-        if (existing.has(key)) {
-          const current = models.find(
-            (entry) => `${entry.providerId}::${entry.modelId}` === key,
-          );
-          if (current) {
-            overlayCatalogLimits(current, model);
-            if (!current['input'] && Array.isArray(model.input) && model.input.length > 0) {
-              current['input'] = [...model.input];
-            }
-            if (current['reasoning'] === undefined && typeof model.reasoning === 'boolean') {
-              current['reasoning'] = model.reasoning;
-            }
-            if (Array.isArray(model.thinkingLevels) && model.thinkingLevels.length > 0) {
-              current['thinkingLevels'] = model.thinkingLevels;
-            }
-          }
-          continue;
-        }
-        existing.add(key);
-        const next: Record<string, unknown> = {
-          providerId: account.providerId,
-          modelId: model.id,
-          label: model.name,
-          source: 'subscription',
-          group: 'subscription',
-        };
-        if (model.reasoning !== undefined) {
-          next.reasoning = model.reasoning;
-        }
-        if (model.thinkingLevels) {
-          next.thinkingLevels = model.thinkingLevels;
-        }
-        if (Array.isArray(model.input) && model.input.length > 0) {
-          next.input = [...model.input];
-        }
-        overlayCatalogLimits(next, model);
-        models.push(next);
-      }
-    }
-    return { ...channelModels, models };
   }
 
   startWatch(): void {
-    if (this.watcher && !this.watchingParent) {
-      return;
-    }
-    const onChange = (): void => {
-      if (this.watchTimer) {
-        clearTimeout(this.watchTimer);
-      }
-      this.watchTimer = setTimeout(() => {
-        void this.emitUpdatedIfChanged();
-        if (this.watchingParent) {
-          this.startWatch();
-        }
-      }, AUTH_UPDATED_DEBOUNCE_MS);
-    };
-    const authDir = dirname(this.authPath);
-    try {
-      const next = watch(authDir, onChange);
-      this.watcher?.close();
-      this.watcher = next;
-      this.watchingParent = false;
-      return;
-    } catch {
-      // `{PIWIN_ROOT}/pi-agent` may not exist until the first login.
-    }
-    if (this.watcher) {
-      return;
-    }
-    try {
-      this.watcher = watch(dirname(authDir), onChange);
-      this.watchingParent = true;
-      return;
-    } catch {
-      this.watchRetry = setTimeout(() => {
-        this.watchRetry = undefined;
-        this.startWatch();
-      }, 2_000);
-      this.watchRetry.unref?.();
-    }
+    this.credentialWatcher.start();
   }
 
   dispose(): void {
@@ -549,17 +454,7 @@ export class SubscriptionAuthService {
       this.active.pending?.reject(new Error('login-cancelled'));
       this.active = undefined;
     }
-    this.watcher?.close();
-    this.watcher = undefined;
-    this.watchingParent = false;
-    if (this.watchTimer) {
-      clearTimeout(this.watchTimer);
-      this.watchTimer = undefined;
-    }
-    if (this.watchRetry) {
-      clearTimeout(this.watchRetry);
-      this.watchRetry = undefined;
-    }
+    this.credentialWatcher.dispose();
   }
 
   catalogModelIds(providerId: string): string[] {
@@ -788,11 +683,12 @@ export class SubscriptionAuthService {
       ];
     }
     const config = await this.loadConfig();
+    const extensionProviders = await readSubscriptionExtensionProviders(getPiwinRoot(this.piwinRoot));
     return buildSubscriptionAccounts(credentials, config, {
       ...(this.active ? { loggingInProviderId: this.active.providerId } : {}),
       syncErrorProviderIds: this.syncErrorProviderIds,
       needsReauthProviderIds: this.needsReauthProviderIds,
-    });
+    }, new Set(extensionProviders.map((provider) => provider.providerId)));
   }
 
   private async emitUpdatedIfChanged(): Promise<void> {
@@ -883,7 +779,9 @@ export class SubscriptionAuthService {
   async ensureLoggedInProviders(): Promise<PiwinConfig> {
     await this.ensurePort();
     await this.refreshLiveCatalog();
-    return this.projectLoggedInProviders();
+    const config = await this.projectLoggedInProviders();
+    this.extensionProjectionPending = false;
+    return config;
   }
 
   /**
@@ -1017,7 +915,22 @@ export class SubscriptionAuthService {
   }
 
   private async ensurePort(): Promise<SubscriptionAuthPort> {
+    if (!this.active && this.reloadPortOnExtensions && this.port) {
+      const sources = await readSubscriptionExtensionProviders(getPiwinRoot(this.piwinRoot));
+      const fingerprint = sources.map((source) => source.entryPath).join('|');
+      if (fingerprint !== this.portExtensionFingerprint) {
+        this.port.dispose();
+        this.port = undefined;
+        this.portExtensionFingerprint = fingerprint;
+        this.extensionProjectionPending = true;
+      }
+    }
     if (!this.port) {
+      if (this.reloadPortOnExtensions && this.portExtensionFingerprint === undefined) {
+        const sources = await readSubscriptionExtensionProviders(getPiwinRoot(this.piwinRoot));
+        this.portExtensionFingerprint = sources.map((source) => source.entryPath).join('|');
+        this.extensionProjectionPending = sources.length > 0;
+      }
       this.port = await this.portFactory();
       this.startWatch();
     }
@@ -1079,12 +992,6 @@ function eventToPayload(
         ...(event.type === 'info' && event.links !== undefined ? { links: event.links } : {}),
       };
   }
-}
-
-function oauthProviderIds(accounts: readonly SubscriptionAccount[]): Set<string> {
-  return new Set(
-    accounts.filter((account) => isSubscriptionAccountUsable(account)).map((account) => account.providerId),
-  );
 }
 
 export { LIVE_ACCOUNT_STATES };

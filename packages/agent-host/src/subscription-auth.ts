@@ -2,7 +2,7 @@
  * Host-facing port over Pi ModelRuntime login/logout/listCredentials.
  * Apps and host-runtime never import Pi packages.
  */
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import {
   isClaudeCodeOauthProviderId,
   isV1SubscriptionProviderId,
@@ -155,6 +155,8 @@ type PiModelRuntimeLike = {
 export type CreateSubscriptionAuthPortOptions = {
   authPath: string;
   modelsPath?: string;
+  /** Enabled, immutable provider extension entries selected by Host Runtime. */
+  extensionPaths?: readonly string[];
   createRuntime?: (options: {
     authPath: string;
     modelsPath?: string;
@@ -179,7 +181,7 @@ export async function createSubscriptionAuthPort(
         authPath: options.authPath,
         ...(options.modelsPath !== undefined ? { modelsPath: options.modelsPath } : {}),
       })
-    : await createDefaultRuntime(options.authPath, options.modelsPath);
+    : await createDefaultRuntime(options.authPath, options.modelsPath, options.extensionPaths);
   const entitlements = new Map<string, ReadonlySet<string>>();
 
   return {
@@ -319,8 +321,9 @@ export function defaultPiAuthPaths(agentDir: string): { authPath: string; models
 async function createDefaultRuntime(
   authPath: string,
   modelsPath?: string,
+  extensionPaths: readonly string[] = [],
 ): Promise<PiModelRuntimeLike> {
-  const piModule = (await import('@earendil-works/pi-coding-agent')) as {
+  const piModule = (await import('@earendil-works/pi-coding-agent')) as unknown as {
     ModelRuntime?: {
       create: (options: {
         authPath: string;
@@ -328,6 +331,13 @@ async function createDefaultRuntime(
         refreshOnCreate?: boolean;
         allowModelNetwork?: boolean;
       }) => Promise<PiModelRuntimeLike>;
+    };
+    DefaultResourceLoader?: new (options: Record<string, unknown>) => {
+      reload(): Promise<void>;
+      getExtensions(): {
+        errors: Array<{ path: string; error: string }>;
+        runtime: { pendingProviderRegistrations: Array<{ name: string; config: object }> };
+      };
     };
   };
   if (!piModule.ModelRuntime?.create) {
@@ -342,6 +352,32 @@ async function createDefaultRuntime(
     // Pass the runtime itself: Pi's `registerProvider` reads `this.builtins`,
     // so a detached method reference throws "reading 'get'" of undefined.
     registerDevinOauthProvider(runtime as { registerProvider(id: string, config: object): void });
+    if (extensionPaths.length > 0) {
+      if (!piModule.DefaultResourceLoader) {
+        throw new Error('Pi extension resource loader is unavailable for subscription auth');
+      }
+      const agentDir = dirname(authPath);
+      const loader = new piModule.DefaultResourceLoader({
+        cwd: agentDir,
+        agentDir,
+        additionalExtensionPaths: [...extensionPaths],
+        noExtensions: true,
+        noSkills: true,
+        noPromptTemplates: true,
+        noThemes: true,
+        noContextFiles: true,
+      });
+      await loader.reload();
+      const loaded = loader.getExtensions();
+      if (loaded.errors.length > 0) {
+        throw new Error(`Provider extension failed to load: ${loaded.errors[0]?.error ?? 'unknown error'}`);
+      }
+      for (const registration of loaded.runtime.pendingProviderRegistrations) {
+        if (registration.name === 'commandcode') {
+          runtime.registerProvider('commandcode', registration.config);
+        }
+      }
+    }
   }
   return runtime;
 }

@@ -44,4 +44,15 @@ describe('buildSubscriptionAccounts', () => {
     );
     expect(accounts.find((account) => account.providerId === 'devin')?.state).toBe('logged-in');
   });
+
+  it('shows Command Code only while its extension is enabled', () => {
+    const credentials = [{ providerId: 'commandcode', type: 'oauth' as const }];
+    const config = { providers: [] };
+    expect(buildSubscriptionAccounts(credentials, config).some(
+      (account) => account.providerId === 'commandcode',
+    )).toBe(false);
+    expect(buildSubscriptionAccounts(credentials, config, {}, new Set(['commandcode'])).find(
+      (account) => account.providerId === 'commandcode',
+    )?.state).toBe('logged-in');
+  });
 });

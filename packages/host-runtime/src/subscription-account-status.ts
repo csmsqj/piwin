@@ -7,12 +7,17 @@ import {
   isSubscriptionOauthProviderId,
 } from '@piwin/contracts';
 import type { SubscriptionCredentialInfo } from '@piwin/agent-host';
+import { isSubscriptionAccountUsable } from './resolve-chat-model.js';
 
 export type AccountRuntimeHint = {
   loggingInProviderId?: string;
   syncErrorProviderIds?: ReadonlySet<string>;
   needsReauthProviderIds?: ReadonlySet<string>;
 };
+
+export function oauthProviderIds(accounts: readonly SubscriptionAccount[]): Set<string> {
+  return new Set(accounts.filter(isSubscriptionAccountUsable).map((account) => account.providerId));
+}
 
 export function findCollidingChannelId(
   config: Pick<PiwinConfig, 'providers'>,
@@ -27,6 +32,7 @@ export function buildSubscriptionAccounts(
   credentials: readonly SubscriptionCredentialInfo[],
   config: Pick<PiwinConfig, 'providers'>,
   hints: AccountRuntimeHint = {},
+  extensionProviderIds: ReadonlySet<string> = new Set(),
 ): SubscriptionAccount[] {
   const loggedInIds = new Set(
     credentials.filter(isLiveSubscriptionCredential).map((entry) => entry.providerId),
@@ -34,6 +40,7 @@ export function buildSubscriptionAccounts(
   const accounts: SubscriptionAccount[] = [];
 
   for (const providerId of V1_SUBSCRIPTION_PROVIDER_IDS) {
+    if (providerId === 'commandcode' && !extensionProviderIds.has(providerId)) continue;
     accounts.push(
       buildAccount(providerId, 'v1', loggedInIds.has(providerId), config, hints),
     );

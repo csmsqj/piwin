@@ -45,6 +45,7 @@ const OAUTH_DISPLAY_PROVIDER_IDS: readonly SubscriptionOauthProviderId[] = [
   'xai',
   'github-copilot',
   'devin',
+  'commandcode',
 ];
 
 type OauthCardId = (typeof OAUTH_DISPLAY_PROVIDER_IDS)[number];
@@ -104,6 +105,14 @@ const CARD_COPY: Record<OauthCardId, ProviderCardMeta> = {
     tagline: '登录后可免费使用 web_search 和 code_search · 非官方接口，账号风险自负',
     taglineEn: 'Sign in to use web_search and code_search for free · unofficial API, you own the risk',
     login: '授权登录',
+    loginEn: 'Connect',
+  },
+  commandcode: {
+    title: 'Command Code',
+    titleEn: 'Command Code',
+    tagline: '社区扩展 · 需自有 Command Code 账号',
+    taglineEn: 'Community extension · Command Code account required',
+    login: '连接授权',
     loginEn: 'Connect',
   },
 };
@@ -469,18 +478,20 @@ export function SubscriptionAccountsPanel(): ReactElement {
     }
   }, [prompt?.promptId]);
 
-  const connectedCount = OAUTH_DISPLAY_PROVIDER_IDS.filter((id) => {
+  const displayProviderIds = OAUTH_DISPLAY_PROVIDER_IDS.filter((id) =>
+    id !== 'commandcode' || accounts.some((account) => account.providerId === id));
+  const connectedCount = displayProviderIds.filter((id) => {
     const acc = accounts.find((item) => item.providerId === id);
     return acc?.state === 'logged-in';
   }).length;
-  const displayCount = OAUTH_DISPLAY_PROVIDER_IDS.length;
+  const displayCount = displayProviderIds.length;
 
   return (
     <section className="oauth-accounts" data-testid="subscription-accounts">
       <div className="oauth-accounts-header">
         <div className="oauth-accounts-header-left">
           <span className="oauth-accounts-header-title">
-            {isChinese ? '官方订阅平台' : 'Official Subscription Providers'}
+            {isChinese ? '账号连接' : 'Connected Providers'}
           </span>
           <span className="oauth-accounts-header-count">{displayCount}</span>
         </div>
@@ -521,7 +532,7 @@ export function SubscriptionAccountsPanel(): ReactElement {
       ) : null}
 
       <div className="oauth-account-list oauth-account-grid">
-        {OAUTH_DISPLAY_PROVIDER_IDS.map((providerId) => {
+        {displayProviderIds.map((providerId) => {
           const account = accounts.find((item) => item.providerId === providerId);
           const copy = CARD_COPY[providerId];
           const isExtensionClaude = providerId === CLAUDE_CODE_OAUTH_PROVIDER_ID;
@@ -616,23 +627,25 @@ export function SubscriptionAccountsPanel(): ReactElement {
                           )}
 
                           {/* Quota Drawer Toggle Button */}
-                          <Button
-                            variant="secondary"
-                            size="compact"
-                            onClick={() => toggleQuotaDrawer(providerId)}
-                            disabled={loadingQuotaIds.has(providerId)}
-                            data-testid={`subscription-quota-toggle-${providerId}`}
-                            className={`oauth-quota-toggle-btn${isExpandedQuota ? ' is-open' : ''}`}
-                          >
-                            {loadingQuotaIds.has(providerId) ? (
-                              <RefreshCw size={12} className="is-spinning" />
-                            ) : null}
-                            <span>{isChinese ? '额度详情' : 'Quota'}</span>
-                            <ChevronDown
-                              size={12}
-                              className={`oauth-drawer-caret${isExpandedQuota ? ' is-open' : ''}`}
-                            />
-                          </Button>
+                          {providerId !== 'commandcode' ? (
+                            <Button
+                              variant="secondary"
+                              size="compact"
+                              onClick={() => toggleQuotaDrawer(providerId)}
+                              disabled={loadingQuotaIds.has(providerId)}
+                              data-testid={`subscription-quota-toggle-${providerId}`}
+                              className={`oauth-quota-toggle-btn${isExpandedQuota ? ' is-open' : ''}`}
+                            >
+                              {loadingQuotaIds.has(providerId) ? (
+                                <RefreshCw size={12} className="is-spinning" />
+                              ) : null}
+                              <span>{isChinese ? '额度详情' : 'Quota'}</span>
+                              <ChevronDown
+                                size={12}
+                                className={`oauth-drawer-caret${isExpandedQuota ? ' is-open' : ''}`}
+                              />
+                            </Button>
+                          ) : null}
 
                           <Button
                             variant="secondary"
