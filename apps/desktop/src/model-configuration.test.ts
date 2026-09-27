@@ -191,7 +191,9 @@ describe('model configuration', () => {
         supportsImageGeneration: false,
       },
     );
-    expect(next?.[0]?.capabilities).toBeUndefined();
+    // Persisted as plain chat rather than an omitted key: settings/apply keeps
+    // stored keys the shell omits, which would restore 生图 on the next load.
+    expect(next?.[0]?.capabilities).toEqual(['chat']);
   });
 
   it('round-trips video-generation from the shared model editor', () => {
@@ -236,7 +238,9 @@ describe('model configuration', () => {
       },
     );
 
-    expect(next?.[0]?.capabilities).toBeUndefined();
+    // Same reason as image-generation: an omitted key is resurrected by the
+    // Host merge, so the cleared 视频 tag must be replaced explicitly.
+    expect(next?.[0]?.capabilities).toEqual(['chat']);
   });
 
   it('makes a newly tagged model available to Video settings automatically', () => {
@@ -475,6 +479,21 @@ describe('model configuration', () => {
       'video-generation': { apiStyle: 'custom', path: '/video/generations' },
     });
     expect(models?.[0]).not.toHaveProperty('nativeWebSearchMode');
+  });
+
+  it('writes an explicit capability list when native search is the last tag cleared', () => {
+    // settings/apply merges a replaced model field by field: omitting
+    // `capabilities` keeps the stored list, so the cleared tag comes back.
+    const original: ModelConfigEntry = {
+      id: 'gemini-3.8-flash-high',
+      capabilities: ['native-web-search'],
+    };
+    const models = applyModelConfigurationDraft([original], original.id, {
+      ...createModelConfigurationDraft(original),
+      supportsNativeWebSearch: false,
+    });
+    expect(models?.[0]?.capabilities).toEqual(['chat']);
+    expect(createModelConfigurationDraft(models![0]!).supportsNativeWebSearch).toBe(false);
   });
 
   it('strips generation routes when the capability is unchecked in the provider editor', () => {

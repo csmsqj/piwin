@@ -295,6 +295,11 @@ export function createRuntimeSettingsRevision(config: PiwinConfig): string {
  * omitted entirely stay on disk — toggling a source sets `enabled`, it does
  * not drop the row. Provider rows are different: omitting one from a
  * `providers` replace is a delete, even when the row still has `apiKeyRef`.
+ *
+ * A provider's `models` list is the one nested exception: it replaces
+ * outright. A model entry carries no Host-held secret or path, and the Models
+ * page must be able to *clear* a field — field-merging the entry would keep
+ * the stored key the shell omitted and resurrect the value the user removed.
  */
 function mergeMissingDomainFields(
   current: unknown,
@@ -329,7 +334,11 @@ function mergeMissingDomainFields(
   const incomingRecord = incoming as Record<string, unknown>;
   const merged: Record<string, unknown> = { ...currentRecord };
   for (const [key, value] of Object.entries(incomingRecord)) {
-    merged[key] = mergeMissingDomainFields(currentRecord[key], value, domain);
+    const replacesModelList =
+      domain === 'providers' && key === 'models' && Array.isArray(value);
+    merged[key] = replacesModelList
+      ? value
+      : mergeMissingDomainFields(currentRecord[key], value, domain);
   }
   return merged;
 }

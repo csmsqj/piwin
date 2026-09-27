@@ -321,6 +321,12 @@ export function applyModelConfigurationDraft(
   }
   if (editedCapabilities.size > 0) {
     updated.capabilities = [...editedCapabilities];
+  } else if (originalCapabilities.length > 0) {
+    // The editor just cleared this model's last explicit tag. Hosts that
+    // field-merge a replaced model keep the stored keys a shell omits, which
+    // resurrects the cleared tag on reload, so persist an explicit list instead
+    // of dropping the key. An empty list still means plain chat.
+    updated.capabilities = ['chat'];
   } else {
     delete updated.capabilities;
   }

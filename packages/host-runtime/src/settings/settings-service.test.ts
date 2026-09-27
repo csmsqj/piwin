@@ -320,6 +320,76 @@ describe('applySettingsMutations', () => {
     ]);
   });
 
+  it('replaces a provider model list outright while keeping provider secrets', () => {
+    const base = createSettingsSnapshot(undefined as unknown as PiwinConfig).config;
+    const currentProviders: NonNullable<PiwinConfig['providers']> = [
+      {
+        id: 'custom-openai',
+        protocol: 'openai-compatible' as const,
+        name: 'Cpa',
+        baseUrl: 'http://127.0.0.1:8317/v1',
+        apiKeyRef: 'keychain:piwin-custom-openai',
+        models: [
+          {
+            id: 'gemini-3.8-flash-high',
+            label: 'Flash High',
+            contextWindow: 1_000_000,
+            tooltipMarkdown: 'tip',
+            capabilities: ['native-web-search'],
+          },
+        ],
+      },
+    ];
+    const row: NonNullable<PiwinConfig['providers']>[number] = {
+      id: 'custom-openai',
+      protocol: 'openai-compatible',
+      name: 'Cpa',
+      baseUrl: 'http://127.0.0.1:8317/v1',
+      apiKeyRef: '[stored-secret]',
+      models: [],
+    };
+
+    // The Models page clears a field by omitting it. A model entry holds no
+    // Host-held field, so the incoming entry wins outright instead of inheriting
+    // the stored value back.
+    const cleared = applySettingsMutations({ ...base, providers: currentProviders }, [
+      mutation('providers', [
+        { ...row, models: [{ id: 'gemini-3.8-flash-high', capabilities: ['chat'] }] },
+      ]),
+    ]);
+    expect(cleared.providers[0]?.models).toEqual([
+      { id: 'gemini-3.8-flash-high', capabilities: ['chat'] },
+    ]);
+    // Provider rows keep merging field by field — that is what preserves the
+    // real secret behind the redacted placeholder.
+    expect(cleared.providers[0]?.apiKeyRef).toBe('keychain:piwin-custom-openai');
+
+    // Same when the shell omits `capabilities` entirely: it is a field of the
+    // entry, not the entry itself, so it does not inherit the stored tag back.
+    const bare = applySettingsMutations({ ...base, providers: currentProviders }, [
+      mutation('providers', [
+        { ...row, models: [{ id: 'gemini-3.8-flash-high', reasoning: true }] },
+      ]),
+    ]);
+    expect(bare.providers[0]?.models).toEqual([
+      { id: 'gemini-3.8-flash-high', reasoning: true },
+    ]);
+
+    // Omitting `models` entirely still means "leave the stored list alone".
+    const { models: _models, ...rowWithoutModels } = row;
+    const renamed = applySettingsMutations({ ...base, providers: currentProviders }, [
+      mutation('providers', [{ ...rowWithoutModels, name: 'Renamed' }]),
+    ]);
+    expect(renamed.providers[0]?.name).toBe('Renamed');
+    expect(renamed.providers[0]?.models?.[0]).toEqual({
+      id: 'gemini-3.8-flash-high',
+      label: 'Flash High',
+      contextWindow: 1_000_000,
+      tooltipMarkdown: 'tip',
+      capabilities: ['native-web-search'],
+    });
+  });
+
   it('deletes a provider that holds an apiKeyRef when the shell omits that row', () => {
     const base = createSettingsSnapshot(undefined as unknown as PiwinConfig).config;
     const currentProviders = [
