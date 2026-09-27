@@ -94,13 +94,6 @@ function hasAssistantError(message: ChatMessageUi): boolean {
   return message.status === 'error' || message.error !== undefined;
 }
 
-/** A failed tool is visible work even while its assistant row is still streaming. */
-function hasFailedTool(message: ChatMessageUi): boolean {
-  return message.tools.some(
-    (tool) => tool.status === 'error' && tool.presentation?.error?.category !== 'cancelled',
-  );
-}
-
 /**
  * Empty `message/start` placeholders are lifecycle chrome, not work. A lost
  * terminal used to leave one streaming forever, which blocked settlement.
@@ -455,8 +448,9 @@ function resolveLiveToolProgress(
  *   - Generated media deliverables (e.g. generated images/videos).
  *
  * Earlier paused runs (isEarlierRunRow) remain inside the fold. A message
- * error, a failed tool, an active subagent, or an open permission gate
- * suppresses or bounds the fold so the user can see and act on blockers.
+ * error, an active subagent, or an open permission gate suppresses the fold
+ * so that blocker stays on the causal stream. A failed tool does not: the
+ * header has to stay, or the chain is stuck open with nothing to collapse.
  */
 function projectLiveRange(
   input: ProjectTurnWorkDisclosureInput,
@@ -509,10 +503,6 @@ function projectLiveRange(
   // with the first tool call and holds every one after it.
   if (!rangeHasTool(input.turn, startIndex, endIndex)) return null;
   if (prefixHasAssistantError(input.turn, startIndex, endIndex)) return null;
-  for (let index = startIndex; index <= endIndex; index += 1) {
-    const message = items[index]?.message;
-    if (message && hasFailedTool(message)) return null;
-  }
   if (
     rangeIsWhollyExploreFolded(
       input.turn,

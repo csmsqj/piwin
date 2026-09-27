@@ -1,6 +1,6 @@
 /**
  * Settings → General page.
- * Unified application preferences: Appearance & Themes, General & Host Capabilities,
+ * Unified application preferences: General & Host Capabilities, Appearance & Themes,
  * Keyboard Shortcuts, and Companion (Pet).
  */
 import { lazy, Suspense, useState, type ReactElement } from 'react';
@@ -242,7 +242,7 @@ export function GeneralPage(): ReactElement {
   const settings = useSettings();
   const { requestPet, onPetActiveChanged } = settings;
   const petsAvailable = settingsHostSupportsCommand(settings, 'pet/list');
-  const [activeTab, setActiveTab] = useState<GeneralSubTab>('appearance');
+  const [activeTab, setActiveTab] = useState<GeneralSubTab>('general');
   useResetSettingsMainScroll(activeTab);
 
   return (

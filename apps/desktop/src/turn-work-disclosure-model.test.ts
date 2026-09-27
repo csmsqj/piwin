@@ -766,7 +766,7 @@ describe('projectTurnWorkDisclosure', () => {
     ).toBeNull();
   });
 
-  it('keeps a failed tool visible while its assistant row is still streaming', () => {
+  it('keeps a fold header when a streaming row already has a failed tool', () => {
     const transcriptTurn = turn([
       message('user-1', { role: 'user', text: 'Run it.' }),
       message('work-1', {
@@ -784,7 +784,13 @@ describe('projectTurnWorkDisclosure', () => {
         activeRunId: 'run-1',
         currentTurnStreaming: true,
       }),
-    ).toBeNull();
+    ).toMatchObject({
+      startIndex: 1,
+      endIndex: 1,
+      live: true,
+      failureCount: 1,
+      toolCount: 1,
+    });
   });
 
   it('does not wrap a chain that is already one explore capsule', () => {
@@ -981,6 +987,36 @@ describe('projectTurnWorkDisclosure', () => {
         permissionPending: true,
       }),
     ).toBeNull();
+  });
+
+  it('keeps a live fold header when a tool failed and the row itself did not', () => {
+    const transcriptTurn = turn([
+      message('user-1', { role: 'user', text: 'Implement this.' }),
+      message('work-1', {
+        runId: 'run-1',
+        thinking: 'Inspecting.',
+        tools: [{ toolCallId: 'bash-1', toolName: 'bash', status: 'error', output: 'exit 1' }],
+      }),
+      message('work-2', {
+        runId: 'run-1',
+        tools: [{ toolCallId: 'read-2', toolName: 'read', status: 'running', output: '' }],
+      }),
+    ]);
+
+    expect(
+      projectTurnWorkDisclosure({
+        turn: transcriptTurn,
+        runRecordsById: {},
+        activeRunId: 'run-1',
+        currentTurnStreaming: true,
+      }),
+    ).toMatchObject({
+      startIndex: 1,
+      endIndex: 2,
+      live: true,
+      failureCount: 1,
+      toolCount: 2,
+    });
   });
 
   it('does not fold a live turn whose work already errored', () => {

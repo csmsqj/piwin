@@ -353,6 +353,17 @@ describe('SettingsShell', () => {
     SETTINGS_LAZY_LOAD_TEST_TIMEOUT_MS,
   );
 
+  it('opens the General page on its first sub-tab', () => {
+    act(() => {
+      root.render(<ShellHarness />);
+    });
+    act(() => {
+      container.querySelector<HTMLButtonElement>('[data-testid="settings-nav-general"]')?.click();
+    });
+    expect(container.querySelector('[data-testid="general-tab-base"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="general-tab-appearance"]')).toBeNull();
+  });
+
   it('updates artifact code-first preference through the checkbox', () => {
     const contextValue = createContextValue(vi.fn());
     act(() => {
@@ -366,6 +377,16 @@ describe('SettingsShell', () => {
         </PiwinUiProvider>,
       );
     });
+    // The General page opens on its first sub-tab (基础设置), so select Appearance first.
+    const generalTabs = container.querySelector('[data-testid="general-subtabs-control"]');
+    const appearanceTab = Array.from(generalTabs?.querySelectorAll('label') ?? []).find((node) =>
+      node.textContent?.includes('外观与主题'),
+    );
+    expect(appearanceTab).toBeTruthy();
+    act(() => {
+      (appearanceTab as HTMLElement).click();
+    });
+
     // Mantine Switch puts data-testid on the <input> (role="switch") directly.
     const input = container.querySelector<HTMLInputElement>(
       '[data-testid="artifact-code-first-switch"]',

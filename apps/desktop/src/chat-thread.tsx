@@ -319,8 +319,13 @@ export function ChatThread(props: ChatThreadProps): ReactElement {
           const workDisclosureKey = `${props.sessionId ?? 'session'}:${turn.id}`;
           // 详细 means detailed: nothing the agent did sits behind a summary
           // the user has to click. An explicit per-turn toggle still wins.
+          // A live chain with a failed tool stays open so the failure is on
+          // screen, but the header is still there to collapse it.
           const workDisclosureDefaultOpen =
-            props.workDetailsExpanded === 'always' || props.toolDensity === 'detailed';
+            props.workDetailsExpanded === 'always' ||
+            props.toolDensity === 'detailed' ||
+            (workDisclosureProjection?.live === true &&
+              workDisclosureProjection.failureCount > 0);
           const workDisclosureOpen =
             workDisclosureOpenByTurnId[workDisclosureKey] ?? workDisclosureDefaultOpen;
           const identityItemIndex = conversationChrome?.identityMessageId

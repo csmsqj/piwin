@@ -794,4 +794,58 @@ describe('ChatThread completed work disclosure', () => {
     expect(container.querySelector('#msg-work-1')).toBeNull();
     expect(container.querySelector('#msg-work-2')).toBeNull();
   });
+
+  it('keeps a collapse header when a live tool has already failed', () => {
+    const messages = [
+      message('user-1', { role: 'user', text: 'Find the button.' }),
+      message('work-1', {
+        thinking: 'Searching.',
+        runId: 'run-1',
+        tools: [
+          {
+            toolCallId: 'bash-1',
+            toolName: 'bash',
+            status: 'error',
+            output: 'exit 1',
+            runId: 'run-1',
+          },
+        ],
+      }),
+      message('work-2', {
+        runId: 'run-1',
+        tools: [
+          {
+            toolCallId: 'read-2',
+            toolName: 'read',
+            status: 'running',
+            output: '',
+            runId: 'run-1',
+          },
+        ],
+      }),
+    ];
+
+    act(() =>
+      root.render(
+        renderThread(messages, {
+          streaming: true,
+          activeRunId: 'run-1',
+          runRecordsById: {},
+        }),
+      ),
+    );
+
+    const trigger = container.querySelector<HTMLButtonElement>(
+      '[data-testid="turn-work-disclosure-trigger"]',
+    );
+    expect(trigger).not.toBeNull();
+    expect(trigger?.getAttribute('aria-expanded')).toBe('true');
+    expect(container.querySelector('#msg-work-1')).not.toBeNull();
+
+    act(() => trigger?.click());
+
+    expect(container.querySelector('[data-testid="turn-work-disclosure-trigger"]')).not.toBeNull();
+    expect(container.querySelector('#msg-work-1')).toBeNull();
+    expect(container.querySelector('#msg-work-2')).toBeNull();
+  });
 });
