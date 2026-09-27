@@ -4,14 +4,16 @@
  * Signing into Devin is, for most people, the point of having free code_search
  * and a free web-search source: both reuse `oauth:devin`. So a Devin login
  * fills those in — but only where the user has not made a choice of their own.
- * A configured code_search model or pasted token stays; a Devin source the user
- * once added and switched off stays off. The search priority is never changed
- * here: someone on "model-native first" may have picked it on purpose, so the
- * client is told and offers the switch instead.
+ * A configured code_search model or pasted token stays. A Devin source the user
+ * switched off stays off, except one case: external-search-first and the only
+ * enabled source is DuckDuckGo. Then login turns Devin on and DuckDuckGo off.
+ * The search priority is never changed here: someone on "model-native first"
+ * may have picked it on purpose, so the client is told and offers the switch.
  */
 import {
   createDefaultCodeSearchConfig,
   createDefaultWebConfig,
+  planDevinLogoutSearch,
   type CodeSearchConfig,
   type PiwinConfig,
   type SubscriptionLoginFollowUp,
@@ -51,6 +53,39 @@ function withDevinCodeSearch(codeSearch: CodeSearchConfig): CodeSearchConfig | u
   return next;
 }
 
+/**
+ * External-first with only DuckDuckGo enabled is the logout fallback.
+ * Login puts Devin back and turns that fallback off.
+ */
+function sourcesReplacingLoneDuckDuckGo(
+  sources: readonly WebSearchSource[],
+): WebSearchSource[] | undefined {
+  const enabled = sources.filter((source) => source.enabled);
+  if (enabled.length !== 1 || enabled[0]?.kind !== 'duckduckgo') {
+    return undefined;
+  }
+  const turnedOff = sources.map((source) =>
+    source.kind === 'duckduckgo' ? { ...source, enabled: false } : source,
+  );
+  const devinIndex = turnedOff.findIndex((source) => source.kind === 'devin');
+  if (devinIndex >= 0) {
+    return turnedOff.map((source, index) =>
+      index === devinIndex
+        ? { ...source, enabled: true, apiKeyRef: source.apiKeyRef?.trim() || DEVIN_ACCOUNT_REF }
+        : source,
+    );
+  }
+  return [
+    ...turnedOff,
+    {
+      id: uniqueSourceId(turnedOff),
+      kind: 'devin',
+      enabled: true,
+      apiKeyRef: DEVIN_ACCOUNT_REF,
+    },
+  ];
+}
+
 function uniqueSourceId(sources: readonly WebSearchSource[]): string {
   const taken = new Set(sources.map((source) => source.id));
   if (!taken.has(DEVIN_PROVIDER_ID)) return DEVIN_PROVIDER_ID;
@@ -75,7 +110,14 @@ export function applySubscriptionLoginDefaults(
   }
 
   const web = next.web ?? createDefaultWebConfig();
-  if (!web.searchSources.some((source) => source.kind === 'devin')) {
+  const replaced =
+    web.searchRoutePolicy === 'external-first'
+      ? sourcesReplacingLoneDuckDuckGo(web.searchSources)
+      : undefined;
+  if (replaced) {
+    next = { ...next, web: { ...web, searchSources: replaced } };
+    enabled.push('web-search-source');
+  } else if (!web.searchSources.some((source) => source.kind === 'devin')) {
     const source: WebSearchSource = {
       id: uniqueSourceId(web.searchSources),
       kind: 'devin',
@@ -101,4 +143,25 @@ export function applySubscriptionLoginDefaults(
       ...(suggestExternalSearchPriority ? { suggestExternalSearchPriority: true } : {}),
     },
   };
+}
+
+/** Turn the Devin web-search source off after OAuth logout, then DuckDuckGo if nothing else is on. */
+export function applyDevinLogoutWebSearch(config: PiwinConfig): PiwinConfig {
+  const web = config.web ?? createDefaultWebConfig();
+  const plan = planDevinLogoutSearch(web.searchSources);
+  if (!plan) return config;
+  let sources = web.searchSources.map((source) =>
+    source.kind === 'devin' ? { ...source, enabled: false } : source,
+  );
+  if (plan.enableDuckDuckGo) {
+    const index = sources.findIndex((source) => source.kind === 'duckduckgo');
+    if (index >= 0) {
+      sources = sources.map((source, sourceIndex) =>
+        sourceIndex === index ? { ...source, enabled: true } : source,
+      );
+    } else {
+      sources = [{ id: 'duckduckgo', kind: 'duckduckgo', enabled: true }, ...sources];
+    }
+  }
+  return { ...config, web: { ...web, searchSources: sources } };
 }

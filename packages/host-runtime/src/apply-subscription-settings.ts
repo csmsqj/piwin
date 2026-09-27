@@ -1,17 +1,20 @@
 import type { HostPush, PiwinConfig, SettingsApplyResult } from '@piwin/contracts';
-import { buildSettingsDomainMutations } from '@piwin/contracts';
 import { SettingsService } from './settings/settings-service.js';
 
 export type ApplySubscriptionSettingsInput = {
   piwinRoot?: string;
-  next: PiwinConfig;
+  /** Full document. Prefer {@link derive} so the write sees the latest config. */
+  next?: PiwinConfig;
+  /** Applied to the config read inside the settings write queue. */
+  derive?: (config: PiwinConfig) => PiwinConfig;
   push?: (message: HostPush) => void;
   onApplied?: (result: SettingsApplyResult) => void;
 };
 
 /**
- * Persist OAuth-driven config (relocate / default seed) through SettingsService
- * so revision, settings/updated, and the serialized write queue stay shared.
+ * Persist OAuth-driven config (relocate / default seed / logout projection)
+ * through SettingsService so revision, settings/updated, and the serialized
+ * write queue stay shared.
  */
 export async function applySubscriptionSettings(
   input: ApplySubscriptionSettingsInput,
@@ -19,15 +22,10 @@ export async function applySubscriptionSettings(
   const service = new SettingsService(
     input.piwinRoot !== undefined ? { piwinRoot: input.piwinRoot } : {},
   );
-  const snapshot = await service.getSnapshot();
-  const mutations = buildSettingsDomainMutations(snapshot.config, input.next);
-  if (mutations.length === 0) {
-    return { snapshot, changedDomains: [] };
-  }
-  const result = await service.apply({
-    expectedRevision: snapshot.revision,
-    mutations,
-  });
+  const derive =
+    input.derive ??
+    (input.next !== undefined ? () => input.next as PiwinConfig : (config: PiwinConfig) => config);
+  const result = await service.update(derive);
   if (result.changedDomains.length > 0) {
     input.push?.({
       type: 'settings/updated',

@@ -116,6 +116,7 @@ export function resolveCodeSearchBackend(
         ...(options.readSecretByRef ? { readSecretByRef: options.readSecretByRef } : {}),
         ...(options.fetch ? { fetch: options.fetch } : {}),
         ...(options.env ? { env: options.env } : {}),
+        ...(options.piwinRoot !== undefined ? { piwinRoot: options.piwinRoot } : {}),
       }),
     };
   }

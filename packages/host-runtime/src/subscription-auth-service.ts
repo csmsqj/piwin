@@ -40,7 +40,7 @@ import { loadPiwinConfig } from './config-store.js';
 import { getPiwinRoot, resolveHostPiAgentDir } from './paths.js';
 import { rewriteChannelModelRefs } from './rewrite-channel-model-refs.js';
 import { buildSubscriptionAccounts, findCollidingChannelId } from './subscription-account-status.js';
-import { applySubscriptionLoginDefaults } from './subscription-login-defaults.js';
+import { applyDevinLogoutWebSearch, applySubscriptionLoginDefaults } from './subscription-login-defaults.js';
 import { isSubscriptionAccountUsable } from './resolve-chat-model.js';
 import {
   ensureSubscriptionProviders,
@@ -88,6 +88,8 @@ export class SubscriptionAuthService {
   private readonly portFactory: () => Promise<SubscriptionAuthPort>;
   private readonly loadConfig: () => Promise<PiwinConfig>;
   private readonly saveConfig: (config: PiwinConfig) => Promise<void>;
+  /** Tests inject saveConfig. Production writes go through the settings queue. */
+  private readonly externalConfigStore: boolean;
   private readonly piwinRoot: string | undefined;
   private readonly authPath: string;
   private readonly now: () => number;
@@ -128,13 +130,14 @@ export class SubscriptionAuthService {
     this.openAuthUrl = options.openAuthUrl;
     this.loadConfig =
       deps.loadConfig ?? (() => loadPiwinConfig(getPiwinRoot(options.piwinRoot)));
+    this.externalConfigStore = deps.applySettings !== undefined || deps.saveConfig !== undefined;
     this.saveConfig =
       deps.applySettings ??
       deps.saveConfig ??
       (async (config) => {
         await applySubscriptionSettings({
           ...(options.piwinRoot !== undefined ? { piwinRoot: options.piwinRoot } : {}),
-          next: config,
+          derive: () => config,
           ...(this.push ? { push: this.push } : {}),
           ...(this.onSettingsApplied ? { onApplied: this.onSettingsApplied } : {}),
         });
@@ -403,7 +406,16 @@ export class SubscriptionAuthService {
       this.syncErrorProviderIds.delete(providerId);
       this.needsReauthProviderIds.delete(providerId);
     }
-    await this.ensureLoggedInProviders();
+    try {
+      await this.ensureLoggedInProviders();
+      if (providerId === 'devin') {
+        await this.persistDevinLogoutWebSearch();
+      }
+    } catch (error) {
+      // The credential is already gone. A settings-queue conflict must not
+      // surface as a failed logout.
+      console.warn('[piwin-host] auth/logout provider projection failed', error);
+    }
     this.emitUpdated();
     return {};
   }
@@ -893,16 +905,42 @@ export class SubscriptionAuthService {
     return { modelCount };
   }
 
+  private async persistDevinLogoutWebSearch(): Promise<void> {
+    if (this.externalConfigStore) {
+      const config = await this.loadConfig();
+      const next = applyDevinLogoutWebSearch(config);
+      if (next !== config) {
+        await this.saveConfig(next);
+      }
+      return;
+    }
+    await applySubscriptionSettings({
+      ...(this.piwinRoot !== undefined ? { piwinRoot: this.piwinRoot } : {}),
+      derive: applyDevinLogoutWebSearch,
+      ...(this.push ? { push: this.push } : {}),
+      ...(this.onSettingsApplied ? { onApplied: this.onSettingsApplied } : {}),
+    });
+  }
+
   private async projectLoggedInProviders(): Promise<PiwinConfig> {
     const accounts = await this.readAccounts();
-    const config = await this.loadConfig();
-    const next = ensureSubscriptionProviders(config, accounts, (providerId) =>
-      this.chatCatalogFor(providerId),
-    );
-    if (next !== config) {
-      await this.saveConfig(next);
+    const derive = (config: PiwinConfig): PiwinConfig =>
+      ensureSubscriptionProviders(config, accounts, (providerId) => this.chatCatalogFor(providerId));
+    if (this.externalConfigStore) {
+      const config = await this.loadConfig();
+      const next = derive(config);
+      if (next !== config) {
+        await this.saveConfig(next);
+      }
+      return next;
     }
-    return next;
+    const result = await applySubscriptionSettings({
+      ...(this.piwinRoot !== undefined ? { piwinRoot: this.piwinRoot } : {}),
+      derive,
+      ...(this.push ? { push: this.push } : {}),
+      ...(this.onSettingsApplied ? { onApplied: this.onSettingsApplied } : {}),
+    });
+    return result?.snapshot.config ?? (await this.loadConfig());
   }
 
 

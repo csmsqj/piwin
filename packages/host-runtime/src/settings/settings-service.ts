@@ -12,6 +12,7 @@ import type {
   SettingsSnapshot,
 } from '@piwin/contracts';
 import {
+  buildSettingsDomainMutations,
   isRedactedStoredSecret,
   PIWIN_SETTINGS_SCHEMA_VERSION,
   resolveArtifactCapability,
@@ -108,6 +109,23 @@ export class SettingsService {
 
   apply(input: ApplySettingsInput): Promise<SettingsApplyResult> {
     return this.runSerialized(() => this.applyMutation(input));
+  }
+
+  /**
+   * Read and write under the same settings queue. Callers that already built a
+   * full document outside this queue lose to a concurrent save (logout saw
+   * "Settings changed since revision").
+   */
+  update(derive: (config: PiwinConfig) => PiwinConfig): Promise<SettingsApplyResult> {
+    return this.runSerialized(async () => {
+      const currentSnapshot = await this.getSnapshot();
+      const nextConfig = derive(currentSnapshot.config);
+      const mutations = buildSettingsDomainMutations(currentSnapshot.config, nextConfig);
+      if (mutations.length === 0) {
+        return { snapshot: currentSnapshot, changedDomains: [] };
+      }
+      return this.applyMutation({ mutations });
+    });
   }
 
   private runSerialized<T>(operation: () => Promise<T>): Promise<T> {

@@ -244,7 +244,7 @@ export async function composeSessionHostToolsForSession(
     ...(config ? { config } : {}),
     ...(artifactCapability ? { artifactCapability } : {}),
     ...(model ? { model } : {}),
-    ...(config ? { secretResolver: createSecretResolver() } : {}),
+    ...(config ? { secretResolver: createSecretResolver({ piwinRoot: rootDir }) } : {}),
     getBrowserSession: () => deps.browserSession ?? undefined,
     getNotesServices: () => deps.getNotesServices(),
     getCardStore: () => deps.getCardStore(),

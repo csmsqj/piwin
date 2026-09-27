@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { HostPush } from '@piwin/contracts';
 import { createDefaultPiwinConfig, savePiwinConfig } from './config-store.js';
 import { applySubscriptionSettings } from './apply-subscription-settings.js';
+import { SettingsService } from './settings/settings-service.js';
 
 describe('applySubscriptionSettings', () => {
   const roots: string[] = [];
@@ -40,5 +41,43 @@ describe('applySubscriptionSettings', () => {
     });
     expect(result?.changedDomains.some((change) => change.domain === 'providers')).toBe(true);
     expect(pushes.some((message) => message.type === 'settings/updated')).toBe(true);
+  });
+
+  it('derives from the latest queued config instead of reverting a concurrent save', async () => {
+    const piwinRoot = await mkdtemp(join(tmpdir(), 'piwin-oauth-settings-race-'));
+    roots.push(piwinRoot);
+    await savePiwinConfig(createDefaultPiwinConfig(), piwinRoot);
+    const service = new SettingsService({ piwinRoot });
+    const snapshot = await service.getSnapshot();
+    const codeSearchWrite = service.apply({
+      expectedRevision: snapshot.revision,
+      mutations: [
+        {
+          kind: 'replace-domain',
+          domain: 'codeSearch',
+          value: { enabled: true, backend: 'windsurf', apiKeyRef: 'oauth:devin' },
+        },
+      ],
+    });
+    const oauthWrite = applySubscriptionSettings({
+      piwinRoot,
+      derive: (config) => ({
+        ...config,
+        providers: [
+          ...config.providers,
+          {
+            id: 'devin',
+            protocol: 'openai-compatible',
+            name: 'Devin',
+            baseUrl: 'https://api.devin.ai',
+            models: [],
+          },
+        ],
+      }),
+    });
+    await Promise.all([codeSearchWrite, oauthWrite]);
+    const after = await service.getSnapshot();
+    expect(after.config.codeSearch).toMatchObject({ enabled: true, apiKeyRef: 'oauth:devin' });
+    expect(after.config.providers.some((provider) => provider.id === 'devin')).toBe(true);
   });
 });
