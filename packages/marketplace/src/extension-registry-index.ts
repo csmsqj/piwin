@@ -3,7 +3,7 @@ import type { MarketplaceCatalogEntry } from '@piwin/contracts';
 import { listCatalogEntries, validateCatalogEntry, type ListCatalogEntriesOptions } from './catalog/catalog.js';
 
 export const DEFAULT_EXTENSION_REGISTRY_URL =
-  'https://mimimaster.github.io/piwin-extensions/index.json';
+  'https://extension.piwinwin.com/index.json';
 const REGISTRY_CACHE_MS = 5 * 60_000;
 let cachedEntries: MarketplaceCatalogEntry[] = [];
 let cacheExpiresAt = 0;
