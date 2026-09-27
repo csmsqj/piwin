@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, realpath, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
-import { join } from 'node:path';
+import { join, parse } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { handleHostListDir } from './host-list-dir.js';
 
@@ -34,6 +34,7 @@ describe('handleHostListDir', () => {
     ]);
     expect(data.entries.find((entry) => entry.name === 'readme.txt')?.kind).toBe('file');
     expect(data.entries.find((entry) => entry.name === 'alpha')?.kind).toBe('directory');
+    expect((response.data as { locations?: unknown }).locations).toBeUndefined();
   });
 
   it('defaults to the Host home directory when path is omitted', async () => {
@@ -42,9 +43,16 @@ describe('handleHostListDir', () => {
     if (!response.success) {
       throw new Error(response.error);
     }
-    const data = response.data as { path: string; homePath: string };
+    const data = response.data as {
+      path: string;
+      homePath: string;
+      locations?: Array<{ name: string; path: string }>;
+    };
     expect(data.path).toBe(await realpath(os.homedir()));
     expect(data.homePath).toBe(os.homedir());
+    expect(data.locations).toContainEqual(
+      expect.objectContaining({ path: parse(os.homedir()).root }),
+    );
   });
 
   it('rejects a file path', async () => {

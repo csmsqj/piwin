@@ -48,10 +48,18 @@ export type HostDirEntry = {
   path: string;
 };
 
+/** A Host filesystem root or mounted volume shown in directory pickers. */
+export type HostLocation = {
+  name: string;
+  path: string;
+};
+
 /** Response for `host/list-dir`. */
 export type HostListDirData = {
   path: string;
   parentPath: string | null;
   homePath: string;
   entries: HostDirEntry[];
+  /** Included when listing Host home; older Hosts may omit it. */
+  locations?: HostLocation[];
 };

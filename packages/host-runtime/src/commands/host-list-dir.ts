@@ -8,6 +8,7 @@ import path from 'node:path';
 import type { HostCommand, HostDirEntry, HostListDirData, HostResponse } from '@piwin/contracts';
 import { formatError } from '@piwin/contracts';
 import { fail, ok } from '../response-helpers.js';
+import { listHostLocations } from './host-locations.js';
 
 const MAX_ENTRIES = 800;
 
@@ -128,6 +129,9 @@ export async function handleHostListDir(
     parentPath: parent === targetAbsolute ? null : parent,
     homePath,
     entries,
+    ...(path.resolve(requested) === path.resolve(homePath)
+      ? { locations: await listHostLocations(homePath) }
+      : {}),
   };
   return ok(requestId, 'host/list-dir', data);
 }

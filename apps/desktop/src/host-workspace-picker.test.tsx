@@ -315,4 +315,117 @@ describe('HostWorkspacePicker', () => {
     });
     expect(column.style.minWidth).toBe('260px');
   });
+
+  it('opens Host locations and moves to the parent without changing back/forward semantics', async () => {
+    container = document.createElement('div');
+    document.body.append(container);
+    root = createRoot(container);
+    const mounted = '/Volumes/Drive';
+    const mountedProject = `${mounted}/Projects`;
+    const listings: Record<string, HostListDirData> = {
+      [home.path]: {
+        ...home,
+        locations: [
+          { name: 'Computer', path: '/' },
+          { name: 'Drive', path: mounted },
+        ],
+      },
+      [mounted]: {
+        path: mounted,
+        parentPath: '/Volumes',
+        homePath: home.path,
+        entries: [{ name: 'Projects', kind: 'directory', path: mountedProject }],
+      },
+      [mountedProject]: {
+        path: mountedProject,
+        parentPath: mounted,
+        homePath: home.path,
+        entries: [],
+      },
+    };
+    const listDirectory = vi.fn(async (path?: string) => listings[path ?? home.path] ?? home);
+
+    await act(async () => {
+      root?.render(
+        <HostWorkspacePicker
+          locale="en"
+          currentPath=""
+          onCurrentPathChange={() => undefined}
+          listDirectory={listDirectory}
+          onConfirm={() => undefined}
+          onCancel={() => undefined}
+        />,
+      );
+    });
+    const drive = container?.querySelector(
+      '[data-testid="host-workspace-location"][title="/Volumes/Drive"]',
+    ) as HTMLButtonElement;
+    expect(drive).toBeTruthy();
+    await act(async () => drive.click());
+    expect(pathInputValue(container)).toBe(mounted);
+    const projectsRow = container?.querySelector(
+      '[data-testid="host-workspace-dir"]',
+    ) as HTMLButtonElement;
+    await act(async () => projectsRow.click());
+    expect(pathInputValue(container)).toBe(mountedProject);
+    await act(async () => {
+      (container?.querySelector('[data-testid="host-workspace-up"]') as HTMLButtonElement).click();
+    });
+    expect(pathInputValue(container)).toBe(mounted);
+    await act(async () => {
+      (container?.querySelector('[data-testid="host-workspace-back"]') as HTMLButtonElement).click();
+    });
+    expect(pathInputValue(container)).toBe(mountedProject);
+    await act(async () => {
+      (container?.querySelector('[data-testid="host-workspace-forward"]') as HTMLButtonElement).click();
+    });
+    expect(pathInputValue(container)).toBe(mounted);
+  });
+
+  it('can move up from a deep path opened without visiting its ancestors', async () => {
+    container = document.createElement('div');
+    document.body.append(container);
+    root = createRoot(container);
+    const deepPath = '/Volumes/Drive/Projects/test';
+    const parentPath = '/Volumes/Drive/Projects';
+    const listDirectory = vi.fn(async (requested?: string): Promise<HostListDirData> => {
+      if (requested === deepPath) {
+        return { path: deepPath, parentPath, homePath: home.path, entries: [] };
+      }
+      if (requested === parentPath) {
+        return {
+          path: parentPath,
+          parentPath: '/Volumes/Drive',
+          homePath: home.path,
+          entries: [{ name: 'test', path: deepPath, kind: 'directory' }],
+        };
+      }
+      return home;
+    });
+
+    await act(async () => {
+      root?.render(
+        <HostWorkspacePicker
+          locale="zh-CN"
+          currentPath={deepPath}
+          onCurrentPathChange={() => undefined}
+          listDirectory={listDirectory}
+          onConfirm={() => undefined}
+          onCancel={() => undefined}
+        />,
+      );
+    });
+    expect(pathInputValue(container)).toBe(deepPath);
+    expect(
+      (container?.querySelector('[data-testid="host-workspace-back"]') as HTMLButtonElement).disabled,
+    ).toBe(true);
+    await act(async () => {
+      (container?.querySelector('[data-testid="host-workspace-up"]') as HTMLButtonElement).click();
+    });
+    expect(pathInputValue(container)).toBe(parentPath);
+    await act(async () => {
+      (container?.querySelector('[data-testid="host-workspace-back"]') as HTMLButtonElement).click();
+    });
+    expect(pathInputValue(container)).toBe(deepPath);
+  });
 });

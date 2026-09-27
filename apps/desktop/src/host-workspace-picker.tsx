@@ -11,6 +11,7 @@ import {
 } from 'react';
 import type { HostDirEntry, HostListDirData } from '@piwin/contracts';
 import {
+  IconArrowUp,
   IconChevronLeft,
   IconChevronRight,
   IconDocument,
@@ -134,6 +135,7 @@ export function HostWorkspacePicker(props: HostWorkspacePickerProps): ReactEleme
       typedPath.length === 0 &&
       selectedEntryIsFile(columns, selectedPath));
   const favorites = homeListing ? favoritePathsFromListing(homeListing) : [];
+  const locations = homeListing?.locations ?? [];
   const recents = (props.recents ?? []).filter((path) => path.trim().length > 0).slice(0, 8);
   const focusPath = selectedPath ?? directoryPath;
 
@@ -188,7 +190,7 @@ export function HostWorkspacePicker(props: HostWorkspacePickerProps): ReactEleme
       }
       setColumns(chain);
       commitPath(target.path);
-      const homeColumn = chain.find((column) => column.path === column.homePath);
+      const homeColumn = chain.find((column) => column.path === column.homePath || column.locations);
       if (homeColumn) {
         setHomeListing(homeColumn);
       } else if (homeListingRef.current === null) {
@@ -387,6 +389,7 @@ export function HostWorkspacePicker(props: HostWorkspacePickerProps): ReactEleme
 
   const canBack = history.index > 0;
   const canForward = history.index >= 0 && history.index < history.paths.length - 1;
+  const parentPath = columns[columns.length - 1]?.parentPath;
 
   const lastColumnIndex = Math.max(0, columns.length - 1);
 
@@ -403,7 +406,8 @@ export function HostWorkspacePicker(props: HostWorkspacePickerProps): ReactEleme
             className="host-workspace-nav-btn"
             disabled={!canBack || loading}
             data-testid="host-workspace-back"
-            aria-label={zh ? '后退' : 'Back'}
+            aria-label={zh ? '后退到上一位置' : 'Back to previous location'}
+            title={zh ? '后退到上一位置' : 'Back to previous location'}
             onClick={() => {
               const path = history.paths[history.index - 1];
               if (!path) {
@@ -421,7 +425,8 @@ export function HostWorkspacePicker(props: HostWorkspacePickerProps): ReactEleme
             className="host-workspace-nav-btn"
             disabled={!canForward || loading}
             data-testid="host-workspace-forward"
-            aria-label={zh ? '前进' : 'Forward'}
+            aria-label={zh ? '前进到下一位置' : 'Forward to next location'}
+            title={zh ? '前进到下一位置' : 'Forward to next location'}
             onClick={() => {
               const path = history.paths[history.index + 1];
               if (!path) {
@@ -433,6 +438,19 @@ export function HostWorkspacePicker(props: HostWorkspacePickerProps): ReactEleme
             }}
           >
             <IconChevronRight width={14} height={14} />
+          </button>
+          <button
+            type="button"
+            className="host-workspace-nav-btn"
+            disabled={!parentPath || loading}
+            data-testid="host-workspace-up"
+            aria-label={zh ? '上一级文件夹' : 'Parent folder'}
+            title={zh ? '上一级文件夹' : 'Parent folder'}
+            onClick={() => {
+              if (parentPath) void jumpTo(parentPath);
+            }}
+          >
+            <IconArrowUp width={14} height={14} />
           </button>
           <input
             className="host-workspace-path-input"
@@ -521,6 +539,25 @@ export function HostWorkspacePicker(props: HostWorkspacePickerProps): ReactEleme
                 <span>{sidebarHome.name}</span>
               </button>
             ) : null}
+            {locations.map((location) => (
+              <button
+                key={location.path}
+                type="button"
+                className={directoryPath === location.path ? 'is-active' : undefined}
+                data-testid="host-workspace-location"
+                title={location.path}
+                onClick={() => void jumpTo(location.path)}
+              >
+                {location.path === '/' ? (
+                  <IconLaptop width={14} height={14} />
+                ) : (
+                  <IconFolder width={14} height={14} />
+                )}
+                <span>
+                  {location.path === '/' ? (zh ? '根目录' : 'Computer') : location.name}
+                </span>
+              </button>
+            ))}
           </div>
           </div>
           <ResizeHandle
