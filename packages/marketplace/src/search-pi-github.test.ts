@@ -23,6 +23,7 @@ describe('searchPiGithubRepos', () => {
               html_url: 'https://github.com/nicobailon/pi-subagents',
               description: 'Pi extension for subagents',
               default_branch: 'main',
+              stargazers_count: 42,
               owner: { login: 'nicobailon' },
             },
           ],
@@ -41,15 +42,19 @@ describe('searchPiGithubRepos', () => {
         installCommand: 'pi install git:github.com/nicobailon/pi-subagents',
         repositoryUrl: 'https://github.com/nicobailon/pi-subagents',
         publisher: 'nicobailon',
+        stars: 42,
       }),
     ]);
   });
 
-  it('returns no network hits for an empty query', async () => {
-    const fetchFn = vi.fn();
+  it('browses the pi-package topic for an empty query', async () => {
+    const fetchFn = vi.fn(async (url: string) => {
+      expect(new URL(url).searchParams.get('q')).toBe('topic:pi-package');
+      return { ok: true, json: async () => ({ items: [] }) };
+    });
     await expect(
       searchPiGithubRepos({ query: '   ', fetch: fetchFn as unknown as typeof fetch }),
     ).resolves.toEqual([]);
-    expect(fetchFn).not.toHaveBeenCalled();
+    expect(fetchFn).toHaveBeenCalledOnce();
   });
 });

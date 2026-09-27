@@ -6,7 +6,7 @@ import type { MarketplaceCapabilityKind } from '@piwin/contracts';
 
 export type MarketTab = 'discover' | 'installed';
 
-export type MarketKindFilter = 'all' | MarketplaceCapabilityKind;
+export type MarketKindFilter = 'all' | MarketplaceCapabilityKind | 'piwin-extension';
 
 /**
  * A Host request that is in flight for one catalog entry or installed item.

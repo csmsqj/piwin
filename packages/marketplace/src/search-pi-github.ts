@@ -66,6 +66,9 @@ function hitFromRepo(value: unknown): MarketplaceSearchHit | undefined {
   };
   const publisher = owner ? readString(owner, 'login') : undefined;
   if (publisher) hit.publisher = publisher;
+  if (typeof repo.stargazers_count === 'number' && Number.isFinite(repo.stargazers_count)) {
+    hit.stars = repo.stargazers_count;
+  }
   const homepage = readString(repo, 'homepage');
   if (homepage) hit.homepage = homepage;
   return hit;
@@ -102,11 +105,10 @@ export async function searchPiGithubRepos(
   options: SearchPiGithubOptions,
 ): Promise<MarketplaceSearchHit[]> {
   const query = sanitizeGithubSearchText(options.query);
-  if (!query) return [];
   const fetchFn = options.fetch ?? fetch;
   const limit = clampLimit(options.limit);
   const searchUrl = new URL(GITHUB_REPO_SEARCH_URL);
-  searchUrl.searchParams.set('q', `topic:pi-package ${query}`);
+  searchUrl.searchParams.set('q', `topic:pi-package${query ? ` ${query}` : ''}`);
   searchUrl.searchParams.set('per_page', String(limit));
   searchUrl.searchParams.set('sort', 'stars');
 

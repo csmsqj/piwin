@@ -2,6 +2,21 @@ import { describe, expect, it, vi } from 'vitest';
 import { handleMarketplaceSearchCommand } from './marketplace-search-commands.js';
 
 describe('handleMarketplaceSearchCommand', () => {
+  it('browses community packages for an empty query', async () => {
+    const fetchFn = vi.fn(async (url: string) => {
+      if (String(url).includes('api.github.com'))
+        return { ok: true, json: async () => ({ items: [] }) };
+      return { ok: true, json: async () => ({ objects: [] }) };
+    });
+    const response = await handleMarketplaceSearchCommand(
+      { type: 'marketplace/search', query: '', limit: 4 },
+      'req-browse',
+      { fetch: fetchFn as unknown as typeof fetch },
+    );
+    expect(response?.success).toBe(true);
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+
   it('ignores unrelated commands', async () => {
     await expect(
       handleMarketplaceSearchCommand({ type: 'host/ping' }, 'req-1'),
@@ -54,17 +69,18 @@ describe('handleMarketplaceSearchCommand', () => {
       hits: [],
     });
     const data = response && 'data' in response ? response.data : undefined;
-    expect(data && typeof data === 'object' && 'remoteError' in data ? data.remoteError : '').toMatch(
-      /network down/,
-    );
+    expect(
+      data && typeof data === 'object' && 'remoteError' in data ? data.remoteError : '',
+    ).toMatch(/network down/);
   });
 
   it('installs an npm search hit through Pi package semantics', async () => {
-    const installPackage = vi.fn(async (input: {
-      source: string;
-      workingDirectory: string;
-      agentDirectory: string;
-    }) => ({ source: input.source, installedPath: '/tmp/pi-agent/npm/node_modules/pi-subagents' }));
+    const installPackage = vi.fn(
+      async (input: { source: string; workingDirectory: string; agentDirectory: string }) => ({
+        source: input.source,
+        installedPath: '/tmp/pi-agent/npm/node_modules/pi-subagents',
+      }),
+    );
 
     const response = await handleMarketplaceSearchCommand(
       {
@@ -103,11 +119,11 @@ describe('handleMarketplaceSearchCommand', () => {
   });
 
   it('normalizes a searched GitHub repository before installation', async () => {
-    const installPackage = vi.fn(async (input: {
-      source: string;
-      workingDirectory: string;
-      agentDirectory: string;
-    }) => ({ source: input.source }));
+    const installPackage = vi.fn(
+      async (input: { source: string; workingDirectory: string; agentDirectory: string }) => ({
+        source: input.source,
+      }),
+    );
     const response = await handleMarketplaceSearchCommand(
       {
         type: 'marketplace/package-install',
@@ -136,7 +152,9 @@ describe('handleMarketplaceSearchCommand', () => {
       { installPackage },
     );
     expect(pinned?.success).toBe(true);
-    expect(installPackage).toHaveBeenCalledWith(expect.objectContaining({ source: 'npm:pi-lens@4.2.1' }));
+    expect(installPackage).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'npm:pi-lens@4.2.1' }),
+    );
 
     const ranged = await handleMarketplaceSearchCommand(
       {

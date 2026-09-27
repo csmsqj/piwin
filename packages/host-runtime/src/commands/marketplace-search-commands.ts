@@ -66,10 +66,6 @@ export async function handleMarketplaceSearchCommand(
     return null;
   }
   const query = command.query.trim();
-  if (!query) {
-    const empty: MarketplaceSearchResult = { query: '', hits: [] };
-    return ok(requestId, 'marketplace/search', empty);
-  }
   try {
     const githubToken = process.env.GITHUB_TOKEN;
     const result = await searchMarketplaceSources({

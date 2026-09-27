@@ -26,13 +26,17 @@ export function localizedText(
   return locale === 'zh-CN' ? text.zhCN : text.en;
 }
 
-const KIND_LABELS: Record<MarketplaceCapabilityKind, Pair> = {
-  extension: ['Agent extension', 'Agent 扩展'],
-  skill: ['Skill', '技能'],
-  mcp: ['Connected service', '连接服务'],
+const KIND_LABELS: Record<MarketplaceCapabilityKind | 'piwin-extension', Pair> = {
+  extension: ['extension', 'extension'],
+  'piwin-extension': ['piwin-extension (upcoming)', 'piwin-extension（待上架）'],
+  skill: ['skill', 'skill'],
+  mcp: ['mcp', 'mcp'],
 };
 
-export function kindLabel(kind: MarketplaceCapabilityKind, locale: DesktopLocale | undefined): string {
+export function kindLabel(
+  kind: MarketplaceCapabilityKind | 'piwin-extension',
+  locale: DesktopLocale | undefined,
+): string {
   return pick(locale, KIND_LABELS[kind]);
 }
 

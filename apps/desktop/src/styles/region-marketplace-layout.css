@@ -1,0 +1,823 @@
+/* Marketplace discovery layout. The page and every result row use the available width. */
+.marketplace-stage .vault-bar-context {
+  font-size: 14px;
+}
+
+.marketplace-stage .vault-bar-count {
+  display: none;
+}
+
+.marketplace-stage .vault-bar-actions {
+  order: 2;
+  margin-left: auto;
+}
+
+.marketplace-stage .vault-titleband-drag {
+  order: 1;
+}
+
+.marketplace-stage .market-tab-wrap {
+  background: var(--surface-2);
+}
+
+.marketplace-stage .market-tab-btn {
+  height: 28px;
+  padding-inline: 12px;
+}
+
+.marketplace-main {
+  display: block;
+  padding: 0;
+}
+
+.marketplace-page {
+  width: 100%;
+  min-height: 100%;
+  box-sizing: border-box;
+  padding: 12px 16px 32px;
+}
+
+.marketplace-page.is-searching .market-filter-row {
+  margin-top: 0;
+}
+
+.market-page-intro p {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.market-search-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.market-source-badges {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.market-source-badge {
+  padding: 2px 7px;
+  border-radius: var(--r-pill, 999px);
+  background: var(--surface-2);
+  border: 1px solid var(--line-1);
+  font-size: 10.5px;
+  color: var(--text-3);
+  font-weight: 500;
+  font-family: var(--font-mono, monospace);
+  line-height: 1.3;
+}
+
+.market-source-badge.is-piwin {
+  background: var(--zhu-wash);
+  border-color: rgba(226, 90, 61, 0.3);
+  color: var(--zhu);
+  font-weight: 600;
+}
+
+html:is([data-theme-id='piwin-inkstone-paper'], [data-theme-id='piwin-inkstone-ink'])
+  .market-source-badge {
+  border-color: var(--l1);
+  background: var(--s2);
+  color: var(--t3);
+}
+
+html:is([data-theme-id='piwin-inkstone-paper'], [data-theme-id='piwin-inkstone-ink'])
+  .market-source-badge.is-piwin {
+  background: var(--zhu-wash);
+  color: var(--zhu);
+}
+
+.marketplace-stage .market-search {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  width: 190px;
+  height: 30px;
+  min-height: 30px;
+  padding-inline: 8px 6px;
+  gap: 6px;
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-pill, 999px);
+  background: var(--surface-2);
+  transition: width var(--t-1, 150ms) var(--ease-out, ease-out),
+    border-color var(--t-1, 150ms) var(--ease-out, ease-out),
+    background var(--t-1, 150ms) var(--ease-out, ease-out);
+}
+
+.marketplace-stage .market-search:focus-within {
+  width: 240px;
+  border-color: var(--line-2, var(--line-1));
+  background: var(--surface-1);
+  box-shadow: none;
+}
+
+.market-search .vault-search-submit {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  border-radius: var(--r-pill, 999px);
+  transition: color var(--t-1, 150ms) var(--ease-out, ease-out);
+}
+
+.market-search .vault-search-submit:hover {
+  color: var(--text-1);
+}
+
+.market-search input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-1);
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.market-search input::placeholder {
+  color: var(--text-4, var(--text-3));
+}
+
+.market-search input::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.market-search .vault-search-clear {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  border-radius: var(--r-pill, 999px);
+  transition: color var(--t-1, 150ms) var(--ease-out, ease-out);
+}
+
+.market-search .vault-search-clear:hover {
+  color: var(--text-1);
+}
+
+.market-filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.market-filter-row .market-category-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.market-filter-row .vault-chip {
+  min-height: 28px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.market-filter-row .vault-chip span {
+  margin-left: 3px;
+  opacity: 0.65;
+  font-size: 10.5px;
+  font-family: var(--font-mono, monospace);
+}
+
+.market-filter-row .vault-chip.is-pending {
+  border-style: dashed;
+  opacity: 0.85;
+}
+
+/* Hero Banner Carousel */
+.market-hero-carousel {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--r-card, 14px);
+  margin-top: 18px;
+  height: 180px;
+  background: var(--surface-1, #141210);
+  border: 1px solid var(--line-1, rgba(235, 229, 218, 0.07));
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.market-carousel-track {
+  display: flex;
+  width: 300%;
+  height: 100%;
+  transition: transform 0.65s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.market-carousel-slide {
+  position: relative;
+  width: 33.3333%;
+  height: 100%;
+  flex-shrink: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+}
+
+.market-slide-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  filter: brightness(0.85) contrast(1.05);
+}
+
+.market-slide-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(11, 10, 9, 0.92) 0%,
+    rgba(11, 10, 9, 0.72) 40%,
+    rgba(11, 10, 9, 0.2) 80%,
+    rgba(11, 10, 9, 0.05) 100%
+  );
+}
+
+html:is([data-theme-id='piwin-inkstone-paper']) .market-hero-carousel {
+  background: var(--s2);
+  border: 1px solid var(--l2);
+  box-shadow: 0 4px 16px rgba(45, 35, 20, 0.06);
+}
+
+html:is([data-theme-id='piwin-inkstone-paper']) .market-slide-overlay {
+  background: linear-gradient(
+    90deg,
+    rgba(240, 236, 228, 0.96) 0%,
+    rgba(240, 236, 228, 0.82) 45%,
+    rgba(240, 236, 228, 0.2) 80%,
+    rgba(240, 236, 228, 0) 100%
+  );
+}
+
+html:is([data-theme-id='piwin-inkstone-paper']) .market-slide-tag {
+  background: var(--zhu-wash);
+  border: 1px solid rgba(176, 58, 36, 0.25);
+  color: var(--zhu);
+}
+
+html:is([data-theme-id='piwin-inkstone-paper']) .market-slide-title {
+  color: var(--t1);
+}
+
+html:is([data-theme-id='piwin-inkstone-paper']) .market-slide-desc {
+  color: var(--t2);
+}
+
+html:is([data-theme-id='piwin-inkstone-paper']) .market-carousel-nav {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid var(--l2);
+  color: var(--t1);
+  box-shadow: 0 2px 6px rgba(45, 35, 20, 0.08);
+}
+
+html:is([data-theme-id='piwin-inkstone-paper']) .market-carousel-nav:hover {
+  background: #ffffff;
+  color: var(--zhu);
+}
+
+.market-slide-content {
+  position: relative;
+  z-index: 2;
+  padding: 0 32px;
+  max-width: 580px;
+}
+
+.market-slide-tag {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: var(--zhu-wash, rgba(226, 90, 61, 0.12));
+  border: 1px solid rgba(226, 90, 61, 0.3);
+  color: var(--zhu, #e25a3d);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+  font-family: var(--font-mono, monospace);
+}
+
+.market-slide-title {
+  font-family: var(--serif, serif);
+  font-size: 21px;
+  font-weight: 700;
+  color: var(--text-1);
+  line-height: 1.3;
+  margin: 0 0 5px;
+  letter-spacing: 0.3px;
+}
+
+.market-slide-desc {
+  font-size: 12.5px;
+  color: var(--text-2);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.market-carousel-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(20, 18, 16, 0.65);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--line-2, rgba(235, 229, 218, 0.12));
+  color: var(--text-1);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  z-index: 5;
+  opacity: 0;
+  transition: opacity 0.2s, background 0.2s;
+  font-size: 16px;
+  padding: 0;
+}
+
+.market-hero-carousel:hover .market-carousel-nav {
+  opacity: 1;
+}
+
+.market-carousel-nav:hover {
+  background: rgba(20, 18, 16, 0.9);
+}
+
+.market-carousel-nav.is-prev {
+  left: 10px;
+}
+
+.market-carousel-nav.is-next {
+  right: 10px;
+}
+
+.market-carousel-dots {
+  position: absolute;
+  bottom: 10px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  z-index: 5;
+}
+
+.market-carousel-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--line-3, rgba(235, 229, 218, 0.2));
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.market-carousel-dot.is-active {
+  width: 16px;
+  background: var(--zhu, #e25a3d);
+}
+
+.market-category-section {
+  margin-top: 24px;
+}
+
+.market-section-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.market-ecosystem-title-row {
+  flex-wrap: wrap;
+}
+
+.market-section-header .market-ecosystem-title {
+  font-family: var(--serif, serif);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.market-section-caption {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.market-section-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 500;
+  background: var(--pine-wash);
+  color: var(--pine);
+}
+
+.market-category-section .market-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(270px, 100%), 1fr));
+  gap: 14px;
+  width: 100%;
+  padding: 14px 0 0;
+}
+
+.market-category-section .market-grid.market-featured-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
+  gap: 12px;
+}
+
+@media (min-width: 900px) {
+  .market-category-section .market-grid.market-featured-grid {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+
+.market-category-section .market-card {
+  min-width: 0;
+  min-height: 236px;
+  padding: 16px;
+}
+
+.market-category-section .market-card-top {
+  justify-content: flex-start;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.market-card-mark {
+  display: grid;
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--pine-wash);
+  color: var(--pine);
+  font-family: var(--serif, serif);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.market-card-mark.is-extension {
+  background: var(--zhu-wash);
+  color: var(--zhu);
+}
+
+.market-card-mark.is-mcp {
+  background: var(--azure-wash);
+  color: var(--azure);
+}
+
+.market-card-header-texts {
+  gap: 2px;
+}
+
+.market-card-kind {
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.market-category-section .market-card-title {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.market-category-section .market-card-desc {
+  margin: 10px 0 8px;
+  min-height: 36px;
+  font-size: 12px;
+}
+
+.market-card-example {
+  margin: 0 0 12px;
+  min-height: 40px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: var(--surface-1);
+  color: var(--text-2);
+  font-size: 11px;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.market-card-example span {
+  margin-right: 6px;
+  color: var(--text-3);
+}
+
+.market-card-footer .market-card-source {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.market-card-footer .piwin-button {
+  flex-shrink: 0;
+}
+
+.market-ecosystem {
+  margin: 24px 0 0;
+  gap: 12px;
+}
+
+.market-community-header {
+  align-items: center;
+}
+
+.market-community-unverified {
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: var(--lamp-wash);
+  color: var(--ochre);
+  font-size: 10px;
+}
+
+.market-view-all {
+  border: 0;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.market-view-all:hover {
+  color: var(--text-1);
+}
+
+.market-community-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(270px, 100%), 1fr));
+  gap: 14px;
+  width: 100%;
+}
+
+.market-community-card {
+  display: flex;
+  min-width: 0;
+  min-height: 188px;
+  padding: 16px;
+}
+
+.market-community-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.market-community-name {
+  min-width: 0;
+  color: var(--text-1);
+  font-size: 14px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.market-community-origin {
+  flex-shrink: 0;
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.market-community-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 4px;
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.market-community-description {
+  margin: 12px 0 8px;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.market-community-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: auto;
+  padding-bottom: 10px;
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.market-community-footer {
+  min-height: 32px;
+}
+
+.market-community-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.market-installed-list {
+  width: 100%;
+  max-width: none;
+  padding: 0;
+}
+
+.market-installed-intro {
+  margin-bottom: 24px;
+}
+
+/* Inkstone Paper Theme Refinements */
+html[data-theme-id='piwin-inkstone-paper'] .marketplace-stage .market-search {
+  height: 30px;
+  min-height: 30px;
+  border: 1px solid var(--l2);
+  border-radius: var(--r-pill, 999px);
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(45, 35, 20, 0.04);
+}
+
+html[data-theme-id='piwin-inkstone-paper'] .marketplace-stage .market-search:focus-within {
+  border-color: var(--zhu);
+  background: #ffffff;
+  box-shadow: 0 0 0 2px var(--zhu-wash);
+}
+
+html[data-theme-id='piwin-inkstone-paper'] .marketplace-stage .market-filter-row .vault-chip {
+  min-height: 28px;
+  height: 28px;
+  border: 1px solid var(--l2);
+  border-radius: 999px;
+  background: var(--s2);
+  color: var(--t2);
+  font-weight: 500;
+  transition: all var(--t-1) var(--ease-out);
+}
+
+html[data-theme-id='piwin-inkstone-paper'] .marketplace-stage .market-filter-row .vault-chip:hover {
+  background: #ffffff;
+  color: var(--t1);
+  border-color: var(--l3);
+}
+
+html[data-theme-id='piwin-inkstone-paper'] .marketplace-stage .market-filter-row .vault-chip.is-on {
+  border-color: transparent;
+  background: var(--zhu);
+  color: var(--on-zhu, #ffffff);
+  box-shadow: 0 2px 8px rgba(176, 58, 36, 0.25);
+  font-weight: 600;
+}
+
+html[data-theme-id='piwin-inkstone-paper'] .marketplace-stage .market-filter-row .vault-chip.is-on span {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+html[data-theme-id='piwin-inkstone-paper'] .market-card-example {
+  background: var(--s1);
+  border: 1px solid var(--l1);
+  color: var(--t2);
+}
+
+html[data-theme-id='piwin-inkstone-paper'] .market-card-example span {
+  color: var(--zhu);
+  font-weight: 600;
+}
+
+html[data-theme-id='piwin-inkstone-paper'] .market-card-mark {
+  border: 1px solid var(--l1);
+  box-shadow: 0 1px 2px rgba(45, 35, 20, 0.04);
+}
+
+html[data-theme-id='piwin-inkstone-paper'] .market-card-footer .piwin-button.is-secondary,
+html[data-theme-id='piwin-inkstone-paper'] .market-community-actions .piwin-button.is-secondary {
+  background: var(--s2);
+  border: 1px solid var(--l2);
+  color: var(--t1);
+  font-weight: 500;
+  border-radius: 6px;
+}
+
+html[data-theme-id='piwin-inkstone-paper'] .market-card-footer .piwin-button.is-secondary:hover,
+html[data-theme-id='piwin-inkstone-paper'] .market-community-actions .piwin-button.is-secondary:hover {
+  background: var(--s1);
+  border-color: var(--l3);
+}
+
+html[data-theme-id='piwin-inkstone-paper'] .market-card-footer .piwin-button.is-installed,
+html[data-theme-id='piwin-inkstone-paper'] .market-community-actions .piwin-button.is-installed {
+  background: transparent;
+  border-color: transparent;
+  color: var(--pine);
+}
+
+/* Inkstone Ink Theme Refinements */
+html[data-theme-id='piwin-inkstone-ink'] .marketplace-stage .market-search {
+  height: 30px;
+  min-height: 30px;
+  border: 1px solid var(--l1);
+  border-radius: var(--r-pill, 999px);
+  background: var(--s1);
+}
+
+html[data-theme-id='piwin-inkstone-ink'] .marketplace-stage .market-search:focus-within {
+  border-color: var(--zhu);
+  background: var(--s2);
+  box-shadow: 0 0 0 2px var(--zhu-wash);
+}
+
+html[data-theme-id='piwin-inkstone-ink'] .marketplace-stage .market-filter-row .vault-chip {
+  min-height: 28px;
+  height: 28px;
+  border: 1px solid var(--l1);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--t2);
+  font-weight: 500;
+  transition: all var(--t-1) var(--ease-out);
+}
+
+html[data-theme-id='piwin-inkstone-ink'] .marketplace-stage .market-filter-row .vault-chip:hover {
+  background: var(--s3);
+  color: var(--t1);
+  border-color: var(--l2);
+}
+
+html[data-theme-id='piwin-inkstone-ink'] .marketplace-stage .market-filter-row .vault-chip.is-on {
+  border-color: transparent;
+  background: var(--zhu);
+  color: var(--on-zhu, #1c0b07);
+  box-shadow: 0 2px 10px rgba(226, 90, 61, 0.3);
+  font-weight: 600;
+}
+
+html[data-theme-id='piwin-inkstone-ink'] .marketplace-stage .market-filter-row .vault-chip.is-on span {
+  color: rgba(28, 11, 7, 0.8);
+}
+
+@media (max-width: 760px) {
+  .marketplace-page {
+    padding-inline: 12px;
+  }
+  .market-filter-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .market-filter-row .market-category-strip {
+    flex: 1 1 100%;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+  .market-filter-row .market-category-strip::-webkit-scrollbar {
+    display: none;
+  }
+  .market-search-row {
+    flex: 1 1 100%;
+    margin-left: 0;
+  }
+  .marketplace-stage .market-search,
+  .marketplace-stage .market-search:focus-within {
+    width: 100%;
+  }
+  .market-community-footer {
+    flex-wrap: wrap;
+  }
+  .market-community-actions {
+    margin-left: auto;
+  }
+}

@@ -9,8 +9,12 @@
   color: var(--text-1);
 }
 
-html:is([data-theme-id='piwin-inkstone-paper'], [data-theme-id='piwin-inkstone-ink']) .vault-stage.marketplace-stage {
-  background: var(--s2) !important;
+html[data-theme-id='piwin-inkstone-paper'] .vault-stage.marketplace-stage {
+  background: var(--s1) !important;
+}
+
+html[data-theme-id='piwin-inkstone-ink'] .vault-stage.marketplace-stage {
+  background: var(--s1) !important;
 }
 
 .marketplace-main {
@@ -179,10 +183,26 @@ html:is([data-theme-id='piwin-inkstone-paper'], [data-theme-id='piwin-inkstone-i
     transform var(--t-1) var(--ease-out);
 }
 
-html:is([data-theme-id='piwin-inkstone-paper'], [data-theme-id='piwin-inkstone-ink']) .market-card {
-  background: var(--s3);
+html[data-theme-id='piwin-inkstone-paper'] .market-card {
+  background: #ffffff;
+  border: 1px solid var(--l2);
+  box-shadow: 0 1px 3px rgba(45, 35, 20, 0.05), 0 0 0 1px rgba(29, 27, 23, 0.04);
+}
+
+html[data-theme-id='piwin-inkstone-paper'] .market-card:hover {
+  border-color: var(--l3);
+  box-shadow: 0 4px 14px rgba(45, 35, 20, 0.08), 0 0 0 1px rgba(29, 27, 23, 0.06);
+}
+
+html[data-theme-id='piwin-inkstone-ink'] .market-card {
+  background: var(--s2);
   border: 1px solid var(--l1);
-  box-shadow: var(--sh1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+html[data-theme-id='piwin-inkstone-ink'] .market-card:hover {
+  border-color: var(--l2);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
 
 .market-card:hover {
@@ -635,8 +655,14 @@ html:is([data-theme-id='piwin-inkstone-paper'], [data-theme-id='piwin-inkstone-i
   box-shadow: var(--sh1);
 }
 
-html:is([data-theme-id='piwin-inkstone-paper'], [data-theme-id='piwin-inkstone-ink']) .market-installed-item {
-  background: var(--s3);
+html[data-theme-id='piwin-inkstone-paper'] .market-installed-item {
+  background: #ffffff;
+  border: 1px solid var(--l2);
+  box-shadow: 0 1px 3px rgba(45, 35, 20, 0.05), 0 0 0 1px rgba(29, 27, 23, 0.04);
+}
+
+html[data-theme-id='piwin-inkstone-ink'] .market-installed-item {
+  background: var(--s2);
   border-color: var(--l1);
 }
 

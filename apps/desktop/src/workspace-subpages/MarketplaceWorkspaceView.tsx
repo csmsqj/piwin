@@ -1,33 +1,32 @@
 /**
  * Capability marketplace full-window page.
  *
- * Discover shows the Host's curated catalog (plus live Pi ecosystem search
- * while a query is typed); Installed shows the Host inventory projection.
+ * Discover shows the Host's curated catalog and a live Pi ecosystem preview;
+ * submitted queries search the ecosystem. Installed shows Host inventory.
  * Every state on screen comes from a Host response or push — the page never
  * simulates progress, activation or removal.
  */
-import { useMemo, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import type {
   HostCommand,
   HostResponse,
   HostServerMessage,
   MarketplaceCatalogEntry,
   MarketplaceInstalledItem,
-  MarketplaceSearchHit,
 } from '@piwin/contracts';
-import { MARKETPLACE_CATEGORIES, normalizeResourceId } from '@piwin/contracts';
 import { Button, ConfirmDialog, EmptyState, Notice } from '@piwin/ui-kit';
 import type { DesktopLocale } from '../desktop-locale.js';
 import { IconExtension } from '../shell-icons.js';
 import { StudioTopbar } from './studio/studio-chrome.js';
 import { emitDesktopNotification } from '../notification-queue.js';
+import { MarketplaceDiscoverControls } from './marketplace/marketplace-discover-controls.js';
+import { MarketplaceCommunitySection } from './marketplace/marketplace-community-section.js';
 import {
   MarketplaceCatalogCard,
   MarketplaceEntryDialog,
+  MarketplaceHeroCarousel,
   MarketplaceInstalledRow,
-  MarketplacePiPackageCard,
   PiPackageInstallDialog,
-  categoryLabel,
   kindLabel,
   useMarketplaceActions,
   useMarketplaceData,
@@ -43,17 +42,24 @@ export type MarketplaceWorkspaceViewProps = {
   onClose: () => void;
   request: (command: HostCommand) => Promise<HostResponse>;
   sessionId?: string | null | undefined;
-  subscribeHostMessages?: ((listener: (message: HostServerMessage) => void) => () => void) | undefined;
+  subscribeHostMessages?:
+    ((listener: (message: HostServerMessage) => void) => () => void) | undefined;
   /** Fill the chat composer with an example request and return to the session. */
   onUseExample?: ((prompt: string) => void) | undefined;
 };
-
-const KIND_FILTERS: readonly MarketKindFilter[] = ['all', 'extension', 'skill', 'mcp'];
 
 function matchesQuery(values: readonly (string | undefined)[], query: string): boolean {
   if (!query) return true;
   return values.some((value) => value?.toLowerCase().includes(query));
 }
+
+const FEATURED_CAPABILITY_IDS: readonly string[] = [
+  'ff-labs-pi-fff',
+  'doc-coauthoring',
+  'frontend-design',
+  'webapp-testing',
+  'memory',
+];
 
 export function MarketplaceWorkspaceView(props: MarketplaceWorkspaceViewProps): ReactElement {
   const zh = props.locale === 'zh-CN';
@@ -101,6 +107,10 @@ export function MarketplaceWorkspaceView(props: MarketplaceWorkspaceViewProps): 
     },
   });
 
+  useEffect(() => {
+    void ecosystem.browse();
+  }, [ecosystem.browse]);
+
   const handleSearchChange = (value: string) => {
     setSearch(value);
     if (!value.trim()) {
@@ -131,24 +141,54 @@ export function MarketplaceWorkspaceView(props: MarketplaceWorkspaceViewProps): 
 
   const visibleEntries = useMemo(
     () =>
-      data.entries.filter(
-        (entry) =>
-          (kindFilter === 'all' || entry.kind === kindFilter) &&
-          matchesQuery(
-            [entry.name.en, entry.name.zhCN, entry.summary.en, entry.summary.zhCN, entry.capabilityId],
-            query,
-          ),
-      ),
+      data.entries
+        .filter(
+          (entry) =>
+            (kindFilter === 'all' || entry.kind === kindFilter) &&
+            matchesQuery(
+              [
+                entry.name.en,
+                entry.name.zhCN,
+                entry.summary.en,
+                entry.summary.zhCN,
+                entry.capabilityId,
+              ],
+              query,
+            ),
+        )
+        .sort((left, right) => {
+          const kindOrder = { extension: 0, skill: 1, mcp: 2 };
+          const categoryOrder = {
+            'code-development': 0,
+            'design-content': 1,
+            'docs-research': 2,
+            'external-service': 3,
+          };
+          return (
+            kindOrder[left.kind] - kindOrder[right.kind] ||
+            categoryOrder[left.category] - categoryOrder[right.category] ||
+            left.name.en.localeCompare(right.name.en)
+          );
+        }),
     [data.entries, kindFilter, query],
   );
-  const entryGroups = useMemo(
-    () =>
-      MARKETPLACE_CATEGORIES.map((category) => ({
-        category,
-        entries: visibleEntries.filter((entry) => entry.category === category),
-      })).filter((group) => group.entries.length > 0),
-    [visibleEntries],
-  );
+
+  const featuredCapabilitySet = useMemo(() => new Set(FEATURED_CAPABILITY_IDS), []);
+
+  const featuredEntries = useMemo(() => {
+    if (query || kindFilter !== 'all') return [];
+    return FEATURED_CAPABILITY_IDS.map((id) =>
+      data.entries.find((entry) => entry.capabilityId === id),
+    ).filter((entry): entry is MarketplaceCatalogEntry => entry !== undefined);
+  }, [data.entries, kindFilter, query]);
+
+  const showFeaturedSection = featuredEntries.length === 5;
+
+  const catalogEntries = useMemo(() => {
+    if (!showFeaturedSection) return visibleEntries;
+    return visibleEntries.filter((entry) => !featuredCapabilitySet.has(entry.capabilityId));
+  }, [showFeaturedSection, visibleEntries, featuredCapabilitySet]);
+
   const visibleItems = useMemo(
     () =>
       data.items.filter(
@@ -161,128 +201,101 @@ export function MarketplaceWorkspaceView(props: MarketplaceWorkspaceViewProps): 
 
   const openEntry: MarketplaceCatalogEntry | null =
     data.entries.find((entry) => entry.entryId === openEntryId) ?? null;
-  // Pi package extensions are namespaced by the normalized package name.
-  const installedPiPackageIds = useMemo(
-    () =>
-      new Set(
-        data.items.flatMap((item) =>
-          item.removal?.command === 'marketplace/package-remove' ? [item.capabilityId] : [],
-        ),
-      ),
-    [data.items],
-  );
-  const isPiPackageInstalled = (hit: MarketplaceSearchHit): boolean => {
-    const namespace = normalizeResourceId(hit.name);
-    return [...installedPiPackageIds].some((id) => id === namespace || id.startsWith(`${namespace}-`));
-  };
-
-  const filters = (
-    <div className="market-filters-group">
-      <div className="market-tab-wrap" role="tablist">
-        {(['discover', 'installed'] as const).map((id) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={tab === id}
-            className={`market-tab-btn${tab === id ? ' is-active' : ''}`}
-            onClick={() => setTab(id)}
-          >
-            <span>{id === 'discover' ? t('Discover', '发现') : t('Installed', '已安装')}</span>
-            <span className="market-tab-count">
-              ({id === 'discover' ? data.entries.length : data.items.length})
-            </span>
-          </button>
-        ))}
-      </div>
-      <div className="market-filter-divider" aria-hidden="true" />
-      <div className="market-category-strip">
-        {KIND_FILTERS.map((kind) => (
-          <button
-            key={kind}
-            type="button"
-            className={`vault-chip${kindFilter === kind ? ' is-on' : ''}`}
-            onClick={() => setKindFilter(kind)}
-          >
-            <span>{kind === 'all' ? t('All', '全部') : kindLabel(kind, props.locale)}</span>
-          </button>
-        ))}
-      </div>
+  const tabs = (
+    <div className="market-tab-wrap" role="tablist">
+      {(['discover', 'installed'] as const).map((id) => (
+        <button
+          key={id}
+          type="button"
+          role="tab"
+          aria-selected={tab === id}
+          className={`market-tab-btn${tab === id ? ' is-active' : ''}`}
+          onClick={() => {
+            setTab(id);
+            if (id === 'installed') {
+              setSearch('');
+              setKindFilter('all');
+              ecosystem.reset();
+            }
+          }}
+        >
+          <span>{id === 'discover' ? t('Discover', '发现') : t('Installed', '已安装')}</span>
+          {id === 'installed' ? (
+            <span className="market-tab-count">{data.items.length}</span>
+          ) : null}
+        </button>
+      ))}
     </div>
   );
 
-  const renderEcosystem = () => (
-    <section className="market-ecosystem" data-testid="marketplace-ecosystem">
-      <header className="market-ecosystem-header">
-        <div className="market-ecosystem-title-row">
-          <h2 className="market-ecosystem-title">{t('Pi ecosystem', 'Pi 生态')}</h2>
-          {ecosystem.hits.length > 0 ? (
-            <span className="market-ecosystem-count-tag">
-              {t(`${ecosystem.hits.length} packages`, `${ecosystem.hits.length} 个包`)}
-            </span>
-          ) : null}
-        </div>
-        <p className="market-ecosystem-sub">
-          {t(
-            'Live, unreviewed results: npm packages tagged pi-package and GitHub repos with topic:pi-package.',
-            '实时搜索、未经审核：npm 上的 pi-package 与 GitHub 上带 topic:pi-package 的仓库。',
-          )}
-        </p>
-      </header>
-      {ecosystem.loading && ecosystem.hits.length === 0 ? (
-        <p className="market-ecosystem-status" data-testid="marketplace-ecosystem-loading">
-          {t('Searching npm and GitHub…', '正在搜索 npm 与 GitHub…')}
-        </p>
-      ) : null}
-      {ecosystem.hits.length > 0 ? (
-        <div className="market-grid">
-          {ecosystem.hits.map((hit: MarketplaceSearchHit) => (
-            <MarketplacePiPackageCard
-              key={hit.entryId}
-              hit={hit}
-              locale={props.locale}
-              onCopyInstall={(copied) => {
-                void navigator.clipboard.writeText(copied.installCommand).then(
-                  () =>
-                    showToast({
-                      type: 'success',
-                      title: t('Command copied', '已复制命令'),
-                      text: copied.installCommand,
-                    }),
-                  () =>
-                    showToast({ type: 'error', title: t('Copy failed', '复制失败'), text: copied.installCommand }),
-                );
-              }}
-              onInstall={packageInstall.select}
-              installState={
-                packageInstall.states[hit.entryId] ??
-                (isPiPackageInstalled(hit) ? 'installed' : 'idle')
-              }
-            />
-          ))}
-        </div>
-      ) : null}
-      {!ecosystem.loading && ecosystem.hits.length === 0 && ecosystem.searchedQuery ? (
-        <p className="market-ecosystem-status" data-testid="marketplace-ecosystem-empty">
-          {t('No community packages found.', '未找到相关的社区包。')}
-        </p>
-      ) : null}
-    </section>
-  );
-
-  const hasSearchedEcosystem = Boolean(
-    ecosystem.searchedQuery || ecosystem.loading || ecosystem.hits.length > 0,
-  );
+  const showEcosystem = !query || ecosystem.searchedQuery.toLowerCase() === query;
+  const hasSearchedEcosystem =
+    (kindFilter === 'all' || kindFilter === 'extension' || Boolean(query)) &&
+    showEcosystem &&
+    Boolean(
+      ecosystem.searchedQuery || ecosystem.loading || ecosystem.hits.length > 0 || ecosystem.error,
+    );
 
   const renderDiscover = () => (
     <>
-      {entryGroups.map((group) => (
-        <section key={group.category} className="market-category-section" data-testid={`market-group-${group.category}`}>
-          <header className="market-ecosystem-header">
-            <h2 className="market-ecosystem-title">{categoryLabel(group.category, props.locale)}</h2>
+      <MarketplaceDiscoverControls
+        locale={props.locale}
+        entries={data.entries}
+        kindFilter={kindFilter}
+        onKindFilterChange={setKindFilter}
+        search={search}
+        onSearchChange={handleSearchChange}
+        onSearchSubmit={handleSearchSubmit}
+      />
+      {!query && kindFilter !== 'piwin-extension' ? (
+        <MarketplaceHeroCarousel locale={props.locale} />
+      ) : null}
+      {kindFilter === 'piwin-extension' ? (
+        <section className="market-category-section" data-testid="marketplace-piwin-extensions">
+          <header className="market-section-header">
+            <div className="market-ecosystem-title-row">
+              <h2 className="market-ecosystem-title">
+                {t('piwin Extensions (Upcoming)', 'piwin 原生扩展（待上架）')}
+              </h2>
+              <span className="market-section-caption">
+                {t(
+                  'Deeply integrated native capabilities under active testing, coming soon.',
+                  '深度集成的原生专属能力正在研发测试中，即将推出。',
+                )}
+              </span>
+            </div>
           </header>
-          <div className="market-grid">
-            {group.entries.map((entry) => (
+          <EmptyState
+            visual={<IconExtension width={28} height={28} aria-hidden="true" />}
+            seal="砚"
+            title={t('Official native extensions coming soon', '官方原生扩展即将推出')}
+            description={t(
+              'Deeply integrated session branching, local knowledge graph, and workflow tools are in active development.',
+              '多会话分支协同、本地知识图谱增强与自动化工作流等专属能力正在研发验证中，无需额外适配即可无缝运行。',
+            )}
+            size="spacious"
+            testId="marketplace-piwin-extension-empty"
+          />
+        </section>
+      ) : null}
+      {showFeaturedSection ? (
+        <section className="market-category-section" data-testid="marketplace-featured">
+          <header className="market-section-header">
+            <div className="market-ecosystem-title-row">
+              <h2 className="market-ecosystem-title">{t('Featured', '精选推荐')}</h2>
+              <span className="market-section-badge">
+                {t('Verified · Native Support', '实测可用 · 原生支持')}
+              </span>
+            </div>
+            <span className="market-section-caption">
+              {t(
+                '5 verified native capabilities for Host AgentRuntime, ready to install and use',
+                '5 项经 Host 原生实测验证的精选能力，支持直接安装与调用',
+              )}
+            </span>
+          </header>
+          <div className="market-grid market-featured-grid">
+            {featuredEntries.map((entry) => (
               <MarketplaceCatalogCard
                 key={entry.entryId}
                 entry={entry}
@@ -294,9 +307,58 @@ export function MarketplaceWorkspaceView(props: MarketplaceWorkspaceViewProps): 
             ))}
           </div>
         </section>
-      ))}
-      {hasSearchedEcosystem ? renderEcosystem() : null}
-      {!data.loading && entryGroups.length === 0 && !(hasSearchedEcosystem && (ecosystem.loading || ecosystem.hits.length > 0)) ? (
+      ) : null}
+      {hasSearchedEcosystem ? (
+        <MarketplaceCommunitySection
+          locale={props.locale}
+          kindFilter={kindFilter}
+          ecosystem={ecosystem}
+          installedItems={data.items}
+          installStates={packageInstall.states}
+          onInstall={packageInstall.select}
+          showToast={showToast}
+        />
+      ) : null}
+      {catalogEntries.length > 0 ? (
+        <section className="market-category-section" data-testid="marketplace-catalog">
+          <header className="market-section-header">
+            <div className="market-ecosystem-title-row">
+              <h2 className="market-ecosystem-title">
+                {showFeaturedSection
+                  ? t('All Capabilities', '全域能力库')
+                  : t('Catalog', '已收录安装项')}
+              </h2>
+              <span className="market-section-caption">
+                {query
+                  ? t(
+                      `${catalogEntries.length} matches for “${search.trim()}”`,
+                      `${catalogEntries.length} 项匹配“${search.trim()}”`,
+                    )
+                  : t(
+                      `${catalogEntries.length} entries with pinned sources; check requirements before installing`,
+                      `${catalogEntries.length} 项固定来源，安装前请查看前提条件`,
+                    )}
+              </span>
+            </div>
+          </header>
+          <div className="market-grid">
+            {catalogEntries.map((entry) => (
+              <MarketplaceCatalogCard
+                key={entry.entryId}
+                entry={entry}
+                installed={installedByEntry.get(entry.entryId)}
+                operation={actions.operations[entry.entryId]}
+                locale={props.locale}
+                onOpen={(opened) => setOpenEntryId(opened.entryId)}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
+      {!data.loading &&
+      kindFilter !== 'piwin-extension' &&
+      visibleEntries.length === 0 &&
+      !(hasSearchedEcosystem && (ecosystem.loading || ecosystem.hits.length > 0)) ? (
         <EmptyState
           visual={<IconExtension width={28} height={28} aria-hidden="true" />}
           seal={query ? '寻' : '空'}
@@ -329,35 +391,49 @@ export function MarketplaceWorkspaceView(props: MarketplaceWorkspaceViewProps): 
     </>
   );
 
-  const renderInstalled = () =>
-    visibleItems.length === 0 && !data.loading ? (
-      <EmptyState
-        visual={<IconExtension width={28} height={28} aria-hidden="true" />}
-        seal="墨"
-        title={t('Nothing installed here yet', '这里还没有已安装的能力')}
-        description={t('Browse Discover to add capabilities to this Host.', '去「发现」为这台 Host 添加能力。')}
-        action={
-          <Button variant="primary" size="compact" onClick={() => setTab('discover')}>
-            {t('Discover', '去发现')}
-          </Button>
-        }
-        size="spacious"
-        testId="marketplace-empty-installed"
-      />
-    ) : (
-      <div className="market-installed-list">
-        {visibleItems.map((item) => (
-          <MarketplaceInstalledRow
-            key={item.installationKey}
-            item={item}
-            operation={actions.operations[item.installationKey]}
-            locale={props.locale}
-            onToggle={(target) => void actions.toggle(target)}
-            onRemove={setRemoveTarget}
-          />
-        ))}
-      </div>
-    );
+  const renderInstalled = () => (
+    <>
+      <header className="market-page-intro market-installed-intro">
+        <p>
+          {t(
+            `Manage ${visibleItems.length} capabilities on this Host.`,
+            `管理这台 Host 上的 ${visibleItems.length} 项能力。`,
+          )}
+        </p>
+      </header>
+      {visibleItems.length === 0 && !data.loading ? (
+        <EmptyState
+          visual={<IconExtension width={28} height={28} aria-hidden="true" />}
+          seal="墨"
+          title={t('Nothing installed here yet', '这里还没有已安装的能力')}
+          description={t(
+            'Browse Discover to add capabilities to this Host.',
+            '去「发现」为这台 Host 添加能力。',
+          )}
+          action={
+            <Button variant="primary" size="compact" onClick={() => setTab('discover')}>
+              {t('Discover', '去发现')}
+            </Button>
+          }
+          size="spacious"
+          testId="marketplace-empty-installed"
+        />
+      ) : (
+        <div className="market-installed-list">
+          {visibleItems.map((item) => (
+            <MarketplaceInstalledRow
+              key={item.installationKey}
+              item={item}
+              operation={actions.operations[item.installationKey]}
+              locale={props.locale}
+              onToggle={(target) => void actions.toggle(target)}
+              onRemove={setRemoveTarget}
+            />
+          ))}
+        </div>
+      )}
+    </>
+  );
 
   return (
     <div className="vault-stage marketplace-stage" data-testid="marketplace-workspace">
@@ -368,23 +444,19 @@ export function MarketplaceWorkspaceView(props: MarketplaceWorkspaceViewProps): 
         locale={props.locale}
         kind="marketplace"
         layout="page"
-        titleCount={tab === 'discover' ? visibleEntries.length : visibleItems.length}
-        searchPlaceholder={t('Search capabilities…', '搜索能力…')}
-        searchTestId="marketplace-search-input"
-        searchValue={search}
-        onSearchChange={handleSearchChange}
-        onSearchSubmit={handleSearchSubmit}
-        filters={filters}
+        barActions={tabs}
       />
 
       <main className="vault-main marketplace-main" id="vault-main">
-        {data.error ? (
-          <Notice tone="warning" testId="marketplace-host-error">
-            {t('Could not read from the Host: ', '读取 Host 状态失败：')}
-            {data.error}
-          </Notice>
-        ) : null}
-        {tab === 'discover' ? renderDiscover() : renderInstalled()}
+        <div className={`marketplace-page${tab === 'discover' && query ? ' is-searching' : ''}`}>
+          {data.error ? (
+            <Notice tone="warning" testId="marketplace-host-error">
+              {t('Could not read from the Host: ', '读取 Host 状态失败：')}
+              {data.error}
+            </Notice>
+          ) : null}
+          {tab === 'discover' ? renderDiscover() : renderInstalled()}
+        </div>
       </main>
 
       <MarketplaceEntryDialog
@@ -414,7 +486,11 @@ export function MarketplaceWorkspaceView(props: MarketplaceWorkspaceViewProps): 
           'It stops loading in new runs. Files are deleted once no session still uses them.',
           '之后的运行不再加载它；没有会话再使用后删除文件。',
         )}
-        affectedObject={removeTarget ? `${kindLabel(removeTarget.kind, props.locale)} · ${removeTarget.name}` : undefined}
+        affectedObject={
+          removeTarget
+            ? `${kindLabel(removeTarget.kind, props.locale)} · ${removeTarget.name}`
+            : undefined
+        }
         confirmLabel={t('Uninstall', '卸载')}
         cancelLabel={t('Cancel', '取消')}
         tone="danger"

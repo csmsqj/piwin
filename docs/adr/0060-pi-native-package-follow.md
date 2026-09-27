@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| Status | Accepted — amended 2026-09-18 |
+| Status | Accepted — amended 2026-09-27 |
 | Date | 2026-08-22 |
 | Extends | [ADR 0002](./0002-config-root-piwin.md), [ADR 0010](./0010-pi-extensions-channel.md), [ADR 0016](./0016-general-workspace-sessions.md), [ADR 0047](./0047-managed-pi-extension-activation.md), [ADR 0048](./0048-settings-runtime-hot-apply.md) |
 | Product spec | [Pi 原生包跟随](../specs/2026-08-22-pi-native-package-follow.md) |
@@ -28,6 +28,8 @@ Manual install (`extensions/install`) stages into `~/.piwin/extensions/revisions
 9. **TUI-incompatible extensions are listed, not loaded.** Static scan (no module execute) classifies `compatible` / `degraded` / `incompatible` / `unverified`. Only `compatible` is `enabled` by default and included in `collectExtensionEntryPaths`.
 10. **Explicit marketplace installation is the write exception.** A user-confirmed `marketplace/package-install` calls Pi's `PackageManager.installAndPersist` through `@piwin/agent-host`, targeting the Host user's Pi agent directory. This is equivalent to the displayed `pi install` operation, including dependency and lifecycle-script execution. Passive inventory reads, refresh, Blueprint compilation, and piwin managed installs remain read-only toward Pi settings. Desktop must identify unverified packages and disclose Host-user execution before confirmation.
 11. **Vendored npm packages are one catalog row.** A bundled extension with `piwin.bundledFrom` (today `npm:@gotgenes/pi-anthropic-auth`, `npm:@rohaquinlop/pi-deepseek-cache`) is the product copy. If `~/.pi/agent` also lists that package, do not show a second `pi-native` row and do not load both. Same-id shadowing cannot collapse these because the Pi inventory scopes identity to the package name (`gotgenes-pi-anthropic-auth`) while the bundled copy keeps the folder id (`pi-anthropic-auth`) for enable/OAuth. Merge at `loadDiscoveredResources` by identity keys (id, package name, `bundledFrom`). Display the npm package name; source stays `bundled` / 应用内置.
+12. **Empty marketplace search browses the ecosystem.** `marketplace/search` with `query: ''` reads npm's `pi-package` keyword and GitHub's `topic:pi-package` repositories. Desktop requests a small preview on opening Discover and expands it on demand. The Host still identifies these packages as unreviewed; browsing has no install side effect.
+13. **Discovery distinguishes live results from the fixed catalog.** Desktop shows live community packages as cards before the fixed install catalog. Catalog entries use upstream install identifiers as names in every locale, show their verification and prerequisites, and open installation details before the Host command runs. The catalog is a set of pinned install sources, not a personalized recommendation feed.
 
 ## Consequences
 

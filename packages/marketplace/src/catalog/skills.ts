@@ -68,7 +68,7 @@ export const SKILL_CATALOG: MarketplaceCatalogEntry[] = [
         },
       },
     ],
-    featured: true,
+    featured: false,
   }),
   anthropicSkill({
     skillId: 'mcp-builder',
@@ -124,6 +124,7 @@ export const SKILL_CATALOG: MarketplaceCatalogEntry[] = [
         },
       },
     ],
+    featured: true,
   }),
   anthropicSkill({
     skillId: 'frontend-design',

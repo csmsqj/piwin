@@ -8,8 +8,7 @@ const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
 const FETCH_TIMEOUT_MS = 8_000;
 
-const NPM_NAME =
-  /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
+const NPM_NAME = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
 
 export type SearchPiPackagesOptions = {
   query: string;
@@ -169,8 +168,7 @@ async function fetchJson(
   signal: AbortSignal | undefined,
 ): Promise<unknown> {
   const timeout = AbortSignal.timeout(FETCH_TIMEOUT_MS);
-  const combined =
-    signal !== undefined ? AbortSignal.any([signal, timeout]) : timeout;
+  const combined = signal !== undefined ? AbortSignal.any([signal, timeout]) : timeout;
   const response = await fetchFn(url, {
     headers: { Accept: 'application/json' },
     signal: combined,
@@ -189,11 +187,10 @@ export async function searchPiNpmPackages(
   options: SearchPiPackagesOptions,
 ): Promise<MarketplaceSearchHit[]> {
   const query = options.query.trim();
-  if (!query) return [];
   const fetchFn = options.fetch ?? fetch;
   const limit = clampLimit(options.limit);
   const searchUrl = new URL(NPM_SEARCH_URL);
-  searchUrl.searchParams.set('text', `keywords:${PI_PACKAGE_KEYWORD} ${query}`);
+  searchUrl.searchParams.set('text', `keywords:${PI_PACKAGE_KEYWORD}${query ? ` ${query}` : ''}`);
   searchUrl.searchParams.set('size', String(limit));
 
   const searchPayload = await fetchJson(searchUrl.toString(), fetchFn, options.signal);
@@ -208,7 +205,7 @@ export async function searchPiNpmPackages(
     hits.push(hit);
   }
 
-  if (isNpmPackageName(query) && !seen.has(query)) {
+  if (query && isNpmPackageName(query) && !seen.has(query)) {
     const encoded = query.startsWith('@')
       ? `@${encodeURIComponent(query.slice(1))}`
       : encodeURIComponent(query);
@@ -224,5 +221,7 @@ export async function searchPiNpmPackages(
     }
   }
 
+  if (!query)
+    hits.sort((left, right) => (right.monthlyDownloads ?? 0) - (left.monthlyDownloads ?? 0));
   return hits.slice(0, limit);
 }

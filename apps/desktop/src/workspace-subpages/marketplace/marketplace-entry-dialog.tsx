@@ -41,7 +41,7 @@ export function MarketplaceEntryDialog(props: MarketplaceEntryDialogProps): Reac
 
   return (
     <Dialog
-      label={localizedText(entry.name, locale)}
+      label={entry.name.en}
       open={true}
       onOpenChange={(open) => {
         if (!open) props.onClose();
@@ -49,7 +49,7 @@ export function MarketplaceEntryDialog(props: MarketplaceEntryDialogProps): Reac
       testId="marketplace-entry-dialog"
     >
       <div className="market-dialog-body">
-        <h3 className="market-dialog-title">{localizedText(entry.name, locale)}</h3>
+        <h3 className="market-dialog-title">{entry.name.en}</h3>
         <div className="market-dialog-meta">
           <span>{kindLabel(entry.kind, locale)}</span>
           <span>•</span>
@@ -97,7 +97,9 @@ export function MarketplaceEntryDialog(props: MarketplaceEntryDialogProps): Reac
             {entry.examples.map((example) => (
               <li key={example.prompt.en}>
                 <strong>{localizedText(example.title, locale)}</strong>
-                <span className="market-detail-example">{localizedText(example.prompt, locale)}</span>
+                <span className="market-detail-example">
+                  {localizedText(example.prompt, locale)}
+                </span>
                 {example.expectedResult ? (
                   <span className="market-card-meta">
                     {t('Expect: ', '预期：')}
@@ -128,12 +130,19 @@ export function MarketplaceEntryDialog(props: MarketplaceEntryDialogProps): Reac
         )}
 
         {props.operation ? (
-          <ProgressBar label={operationLabel(props.operation, locale)} testId="marketplace-entry-progress" />
+          <ProgressBar
+            label={operationLabel(props.operation, locale)}
+            testId="marketplace-entry-progress"
+          />
         ) : null}
 
         <div className="market-dialog-footer">
           {entry.homepage ? (
-            <Button variant="ghost" size="compact" onClick={() => void openExternalUrl(entry.homepage ?? '')}>
+            <Button
+              variant="ghost"
+              size="compact"
+              onClick={() => void openExternalUrl(entry.homepage ?? '')}
+            >
               {t('Source', '查看源码')}
             </Button>
           ) : null}

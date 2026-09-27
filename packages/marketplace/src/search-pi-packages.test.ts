@@ -83,11 +83,15 @@ describe('searchPiNpmPackages', () => {
     expect(hits).toEqual([]);
   });
 
-  it('returns no network hits for an empty query', async () => {
-    const fetchFn = vi.fn();
-    await expect(
-      searchPiNpmPackages({ query: '   ', fetch: fetchFn as unknown as typeof fetch }),
-    ).resolves.toEqual([]);
-    expect(fetchFn).not.toHaveBeenCalled();
+  it('browses the pi-package keyword for an empty query', async () => {
+    const fetchFn = vi.fn(async (url: string) => {
+      expect(new URL(url).searchParams.get('text')).toBe('keywords:pi-package');
+      return { ok: true, json: async () => searchPayload('pi-subagents') };
+    });
+    const hits = await searchPiNpmPackages({
+      query: '   ',
+      fetch: fetchFn as unknown as typeof fetch,
+    });
+    expect(hits.map((hit) => hit.name)).toEqual(['pi-subagents']);
   });
 });

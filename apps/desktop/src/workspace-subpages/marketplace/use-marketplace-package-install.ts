@@ -36,6 +36,44 @@ export function useMarketplacePackageInstall(options: {
     setTarget(null);
     setStates((current) => ({ ...current, [hit.entryId]: 'installing' }));
     try {
+      if (hit.source === 'mcp-registry') {
+        const serverId = hit.name.replace(/[^a-zA-Z0-9._-]/g, '-') || 'mcp-server';
+        const draft = {
+          command: 'npx',
+          args: ['-y', hit.name],
+        };
+        const installRes = await request({
+          type: 'mcp/registry-install-draft',
+          serverId,
+          draft,
+        });
+        if (!installRes.success) throw new Error(installRes.error);
+        await request({ type: 'mcp/start', serverId });
+        setStates((current) => ({ ...current, [hit.entryId]: 'installed' }));
+        showToast({
+          type: 'success',
+          title: zh ? `[${hit.name}] MCP 服务已连接` : `[${hit.name}] MCP server connected`,
+          text: zh ? '服务已启动并接入智能体。' : 'Server started and ready for agent.',
+        });
+        return;
+      }
+      if (hit.source === 'skill') {
+        const repoUrl = hit.repositoryUrl || 'https://github.com/anthropics/skills.git';
+        const skillName = hit.name;
+        const installRes = await request({
+          type: 'skills/install',
+          source: { kind: 'git', url: repoUrl },
+          name: skillName,
+        });
+        if (!installRes.success) throw new Error(installRes.error);
+        setStates((current) => ({ ...current, [hit.entryId]: 'installed' }));
+        showToast({
+          type: 'success',
+          title: zh ? `[${skillName}] Skill 已安装` : `[${skillName}] Skill installed`,
+          text: zh ? '下一条消息起即可使用。' : 'Usable from your next message.',
+        });
+        return;
+      }
       const source =
         hit.source === 'github'
           ? hit.repositoryUrl
@@ -58,7 +96,7 @@ export function useMarketplacePackageInstall(options: {
       const message = error instanceof Error ? error.message : String(error);
       showToast({
         type: 'error',
-        title: zh ? '扩展安装失败' : 'Installation Failed',
+        title: zh ? '安装失败' : 'Installation Failed',
         text: zh ? `安装 [${hit.name}] 失败：${message}` : `Could not install [${hit.name}]: ${message}`,
       });
     } finally {

@@ -1,12 +1,15 @@
 /** Live marketplace search: npm `pi-package` plus GitHub `topic:pi-package`. */
 
-export type MarketplaceSearchSource = 'npm-pi-package' | 'github';
+export type MarketplaceSearchSource =
+  | 'npm-pi-package'
+  | 'github'
+  | 'mcp-registry'
+  | 'skill';
 
 /** Installable Pi package sources returned by the live ecosystem search. */
 export type MarketplacePiPackageSource =
   /** `version` pins an exact npm version (`npm:<name>@<version>`). */
-  | { kind: 'npm'; packageName: string; version?: string }
-  | { kind: 'git'; repositoryUrl: string };
+  { kind: 'npm'; packageName: string; version?: string } | { kind: 'git'; repositoryUrl: string };
 
 export type MarketplaceSearchHit = {
   entryId: string;
@@ -20,6 +23,8 @@ export type MarketplaceSearchHit = {
   homepage?: string;
   publisher?: string;
   monthlyDownloads?: number;
+  stars?: number;
+  kind?: 'extension' | 'skill' | 'mcp';
 };
 
 export type MarketplaceSearchResult = {

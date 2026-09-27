@@ -185,7 +185,7 @@ export async function handleCatalogCommand(
           return fail(requestId, 'speech/transcribe', 'Audio recording duration is invalid.');
         }
         const audio = decodeBase64Audio(command.input.base64Data);
-        const secretResolver = createSecretResolver();
+        const secretResolver = createSecretResolver({ piwinRoot: getPiwinRoot(context.piwinRoot) });
         let apiKey: string | null = null;
         if (provider.apiKeyRef?.trim() || provider.apiKeyEnv?.trim()) {
           try {
@@ -642,7 +642,7 @@ export async function handleCatalogCommand(
       try {
         // Host owns secrets. Remote shells send a stripped provider row; pull
         // the stored ref from this Host's config and resolve it here.
-        const secretResolver = createSecretResolver();
+        const secretResolver = createSecretResolver({ piwinRoot: getPiwinRoot(context.piwinRoot) });
         const oneShotApiKey = command.apiKey?.trim();
         const config = await loadPiwinConfig(getPiwinRoot(context.piwinRoot));
         const persisted = config.providers.find((entry) => entry.id === command.provider.id);
@@ -676,7 +676,7 @@ export async function handleCatalogCommand(
     }
     case 'models/test': {
       try {
-        const secretResolver = createSecretResolver();
+        const secretResolver = createSecretResolver({ piwinRoot: getPiwinRoot(context.piwinRoot) });
         const oneShotApiKey = command.apiKey?.trim();
         const config = await loadPiwinConfig(getPiwinRoot(context.piwinRoot));
         const persisted = config.providers.find((entry) => entry.id === command.provider.id);
@@ -698,7 +698,7 @@ export async function handleCatalogCommand(
     }
     case 'models/image-test': {
       try {
-        const secretResolver = createSecretResolver();
+        const secretResolver = createSecretResolver({ piwinRoot: getPiwinRoot(context.piwinRoot) });
         const oneShotApiKey = command.apiKey?.trim();
         const config = await loadPiwinConfig(getPiwinRoot(context.piwinRoot));
         const persisted = config.providers.find((entry) => entry.id === command.provider.id);
@@ -744,7 +744,7 @@ export async function handleCatalogCommand(
             `Vision provider not found: ${visionRef.providerId}`,
           );
         }
-        const secretResolver = createSecretResolver();
+        const secretResolver = createSecretResolver({ piwinRoot: getPiwinRoot(context.piwinRoot) });
         const apiKey = await secretResolver.resolveProviderSecret(visionProvider);
         if (!apiKey) {
           return fail(requestId, 'vision/delegate', 'Could not resolve vision model API key');
@@ -823,7 +823,7 @@ export async function handleCatalogCommand(
     }
     case 'secrets/set': {
       try {
-        const secretResolver = createSecretResolver();
+        const secretResolver = createSecretResolver({ piwinRoot: getPiwinRoot(context.piwinRoot) });
         const apiKeyRef = await secretResolver.writeProviderSecret(
           command.providerId,
           command.secret,
@@ -836,7 +836,7 @@ export async function handleCatalogCommand(
     }
     case 'secrets/get': {
       try {
-        const secretResolver = createSecretResolver();
+        const secretResolver = createSecretResolver({ piwinRoot: getPiwinRoot(context.piwinRoot) });
         const raw = await secretResolver.readProviderSecret(command.providerId);
         if (!raw || !raw.trim()) {
           return ok(requestId, 'secrets/get', {
@@ -867,12 +867,10 @@ export async function handleCatalogCommand(
       try {
         const config = await loadPiwinConfig(getPiwinRoot(context.piwinRoot));
         const draft = command.input.source;
-        const source =
-          draft && draft.id === command.input.sourceId && draft.kind === command.input.kind
-            ? draft
-            : config.web?.searchSources.find(
-                (candidate) => candidate.id === command.input.sourceId,
-              );
+        const webConfig = withDraftSearchSource(config.web ?? createDefaultWebConfig(), draft);
+        const source = webConfig.searchSources.find(
+          (candidate) => candidate.id === command.input.sourceId,
+        );
         if (!source) {
           return fail(
             requestId,
@@ -894,8 +892,8 @@ export async function handleCatalogCommand(
         // list, so resolve its key alongside the saved sources — otherwise the
         // test runs keyless and fails for a reason Save would have fixed.
         const credentials = await resolveWebRuntimeCredentials(
-          withDraftSearchSource(config.web ?? createDefaultWebConfig(), draft),
-          createSecretResolver(),
+          webConfig,
+          createSecretResolver({ piwinRoot: getPiwinRoot(context.piwinRoot) }),
         );
         return ok(requestId, 'web/test-search-source', await testSearchSource(source, credentials));
       } catch (error) {
@@ -905,7 +903,7 @@ export async function handleCatalogCommand(
     }
     case 'code-search/test-windsurf': {
       try {
-        const secretResolver = createSecretResolver();
+        const secretResolver = createSecretResolver({ piwinRoot: getPiwinRoot(context.piwinRoot) });
         const result = await probeWindsurfToken({
           ...(command.apiKey ? { apiKey: command.apiKey } : {}),
           ...(command.apiKeyRef ? { apiKeyRef: command.apiKeyRef } : {}),

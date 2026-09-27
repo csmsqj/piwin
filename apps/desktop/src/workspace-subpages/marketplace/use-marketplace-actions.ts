@@ -14,7 +14,6 @@ import type {
   McpServerHealth,
 } from '@piwin/contracts';
 import type { DesktopLocale } from '../../desktop-locale.js';
-import { localizedText } from './marketplace-copy.js';
 import { applyExtensionsToSession, describeExtensionChange } from './marketplace-session-apply.js';
 import type { MarketOperation, MarketplaceToast } from './marketplace-types.js';
 
@@ -69,7 +68,11 @@ export function useMarketplaceActions(options: {
       showToast(toast);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      showToast({ type: 'error', title: zh ? `[${name}] 操作失败` : `[${name}] failed`, text: message });
+      showToast({
+        type: 'error',
+        title: zh ? `[${name}] 操作失败` : `[${name}] failed`,
+        text: message,
+      });
     } finally {
       setOperation(key, null);
       await refreshInventory();
@@ -78,7 +81,7 @@ export function useMarketplaceActions(options: {
 
   async function install(entry: MarketplaceCatalogEntry): Promise<void> {
     const { request, sessionId, locale } = optionsRef.current;
-    const name = localizedText(entry.name, locale);
+    const name = entry.name.en;
     const descriptor = entry.install;
     await run(entry.entryId, name, async (phase) => {
       phase('installing');
@@ -86,7 +89,12 @@ export function useMarketplaceActions(options: {
         case 'pi-package': {
           await send(request, { type: 'marketplace/package-install', source: descriptor.source });
           phase('applying');
-          return describeExtensionChange(name, 'installed', await applyExtensionsToSession(request, sessionId), locale);
+          return describeExtensionChange(
+            name,
+            'installed',
+            await applyExtensionsToSession(request, sessionId),
+            locale,
+          );
         }
         case 'managed-extension': {
           const installed = (await send(request, {
@@ -96,10 +104,19 @@ export function useMarketplaceActions(options: {
           })) as { extensionId: string; configuredEnabled?: boolean };
           if (installed.configuredEnabled !== true) {
             phase('enabling');
-            await send(request, { type: 'extensions/set_enabled', extensionId: installed.extensionId, enabled: true });
+            await send(request, {
+              type: 'extensions/set_enabled',
+              extensionId: installed.extensionId,
+              enabled: true,
+            });
           }
           phase('applying');
-          return describeExtensionChange(name, 'installed', await applyExtensionsToSession(request, sessionId), locale);
+          return describeExtensionChange(
+            name,
+            'installed',
+            await applyExtensionsToSession(request, sessionId),
+            locale,
+          );
         }
         case 'skill': {
           await send(request, {
@@ -120,7 +137,10 @@ export function useMarketplaceActions(options: {
             draft: descriptor.draft,
           });
           phase('starting');
-          const started = (await send(request, { type: 'mcp/start', serverId: descriptor.serverId })) as {
+          const started = (await send(request, {
+            type: 'mcp/start',
+            serverId: descriptor.serverId,
+          })) as {
             health: McpServerHealth;
           };
           const health = started.health;
@@ -128,7 +148,9 @@ export function useMarketplaceActions(options: {
             return {
               type: 'success',
               title: zh ? `[${name}] 已连接` : `[${name}] connected`,
-              text: zh ? `发现 ${health.toolCount} 个工具。` : `${health.toolCount} tools discovered.`,
+              text: zh
+                ? `发现 ${health.toolCount} 个工具。`
+                : `${health.toolCount} tools discovered.`,
             };
           }
           return {
@@ -168,13 +190,25 @@ export function useMarketplaceActions(options: {
             : toast;
         }
         case 'marketplace/package-remove': {
-          await send(request, { type: 'marketplace/package-remove', packageSource: route.packageSource });
+          await send(request, {
+            type: 'marketplace/package-remove',
+            packageSource: route.packageSource,
+          });
           phase('applying');
-          return describeExtensionChange(item.name, 'removed', await applyExtensionsToSession(request, sessionId), locale);
+          return describeExtensionChange(
+            item.name,
+            'removed',
+            await applyExtensionsToSession(request, sessionId),
+            locale,
+          );
         }
         case 'skills/uninstall':
           await send(request, { type: 'skills/uninstall', skillId: item.capabilityId });
-          return { type: 'success', title: zh ? `[${item.name}] 已卸载` : `[${item.name}] removed`, text: '' };
+          return {
+            type: 'success',
+            title: zh ? `[${item.name}] 已卸载` : `[${item.name}] removed`,
+            text: '',
+          };
         case 'mcp/remove':
           await send(request, { type: 'mcp/remove', serverId: item.capabilityId });
           return {
@@ -195,11 +229,17 @@ export function useMarketplaceActions(options: {
         await send(request, { type: 'skills/set_enabled', skillId: item.capabilityId, enabled });
         return {
           type: 'success',
-          title: zh ? `[${item.name}] ${enabled ? '已启用' : '已停用'}` : `[${item.name}] ${enabled ? 'enabled' : 'disabled'}`,
+          title: zh
+            ? `[${item.name}] ${enabled ? '已启用' : '已停用'}`
+            : `[${item.name}] ${enabled ? 'enabled' : 'disabled'}`,
           text: '',
         };
       }
-      await send(request, { type: 'extensions/set_enabled', extensionId: item.capabilityId, enabled });
+      await send(request, {
+        type: 'extensions/set_enabled',
+        extensionId: item.capabilityId,
+        enabled,
+      });
       phase('applying');
       return describeExtensionChange(
         item.name,
