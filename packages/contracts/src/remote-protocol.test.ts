@@ -92,6 +92,11 @@ describe('remoteHostSupportsCommand', () => {
     );
   });
 
+  it('allows the knowledge endpoint probe on the historical fallback ceiling', () => {
+    expect(FALLBACK_REMOTE_ALLOWED_COMMANDS).toContain('knowledge/test-connection');
+    expect(FALLBACK_REMOTE_ALLOWED_COMMANDS).toContain('knowledge/embedding-models/discover');
+  });
+
   it('allows session composer profile on the historical fallback ceiling', () => {
     expect(FALLBACK_REMOTE_ALLOWED_COMMANDS).toContain('session/set-composer-profile');
   });

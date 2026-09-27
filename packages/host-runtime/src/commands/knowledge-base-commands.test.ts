@@ -8,12 +8,15 @@ import { canonicalizeFolderPath, createFolderRag, folderKey, type FolderRag } fr
 import { createNoteStore } from '@piwin/notes';
 import { createSessionRecord, upsertSessionRecord } from '@piwin/session';
 import { createDefaultPiwinConfig } from '../config-store.js';
+import { createSecretResolver } from '../secret-resolver.js';
 import { getPiwinSessionIndexPath } from '../paths.js';
 import { handleKnowledgeCommand, type KnowledgeCommandContext } from './knowledge-commands.js';
 
 const cleanup: string[] = [];
 
 afterEach(async () => {
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   for (const dir of cleanup.splice(0)) {
     await rm(dir, { recursive: true, force: true });
   }
@@ -31,6 +34,9 @@ async function setup() {
   const pushes: HostPush[] = [];
   const context: KnowledgeCommandContext = {
     piwinRoot: root,
+    // Probes read the Host-owned key. File-store-only keeps the lookup off the
+    // developer's macOS keychain, which already holds piwin-notes-embedding.
+    secretResolver: createSecretResolver({ piwinRoot: root, preferFileStore: true }),
     getNotesServices: async () => ({ store }),
     getCardStore: async () => {
       throw new Error('card store unused');
@@ -345,6 +351,286 @@ describe('folder retrieve mapping via mocked rag', () => {
     const conceptData = (conceptRes as { data: { concept: { title: string; links: string[] } } }).data.concept;
     expect(conceptData.title).toBe('Attention');
     expect(conceptData.links).toEqual(['Transformers']);
+
+    rag.close();
+  });
+
+  it('keeps wiki distill reachable through the outer knowledge gate', async () => {
+    // `isKnowledgeCommand` is the single entry check for every knowledge
+    // command, so a type missing from that set returns null and dies upstream
+    // as an unhandled command instead of reaching the handler below.
+    const { context, rag } = await setup();
+    const response = await handleKnowledgeCommand(
+      { type: 'knowledge/wiki/distill', baseId: NOTES_KNOWLEDGE_BASE_ID },
+      'd1',
+      context,
+    );
+    expect(response).toMatchObject({
+      success: false,
+      command: 'knowledge/wiki/distill',
+      error: expect.stringContaining('No model is configured'),
+    });
+    rag.close();
+  });
+});
+
+/**
+ * The desktop renderer cannot reach an embedding / reranker endpoint itself —
+ * its CSP keeps `connect-src` on `'self'`/`ipc:` — so "Test connection" runs
+ * here. These cases pin the two things that matter: the round trip happens on
+ * the Host, and the stored key is resolved on the Host instead of being pulled
+ * back into the renderer.
+ */
+describe('knowledge/test-connection', () => {
+  function embeddingResponse(): Response {
+    return new Response(JSON.stringify({ data: [{ embedding: new Array(1536).fill(0.01) }] }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  }
+
+  it('probes the endpoint on the Host and reports the vector width', async () => {
+    const { context, rag } = await setup();
+    const fetchMock = vi.fn(async () => embeddingResponse());
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await handleKnowledgeCommand(
+      {
+        type: 'knowledge/test-connection',
+        kind: 'embedding',
+        provider: 'openai-compatible',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'text-embedding-3-small',
+      },
+      't1',
+      context,
+    );
+
+    expect(response).toMatchObject({ success: true, command: 'knowledge/test-connection' });
+    expect((response as { data: { dimension: number } }).data.dimension).toBe(1536);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.openai.com/v1/embeddings',
+      expect.objectContaining({ method: 'POST' }),
+    );
+
+    rag.close();
+  });
+
+  it('resolves a Host-stored apiKeyRef without the renderer holding the key', async () => {
+    const { root, context, rag } = await setup();
+    const apiKeyRef = await createSecretResolver({
+      piwinRoot: root,
+      preferFileStore: true,
+    }).writeProviderSecret('kb-probe-stored', 'stored-key');
+    const fetchMock = vi.fn(async () => embeddingResponse());
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await handleKnowledgeCommand(
+      {
+        type: 'knowledge/test-connection',
+        kind: 'embedding',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'text-embedding-3-small',
+        apiKeyRef,
+      },
+      't2',
+      context,
+    );
+
+    expect(response).toMatchObject({ success: true });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.openai.com/v1/embeddings',
+      expect.objectContaining({
+        headers: { 'content-type': 'application/json', authorization: 'Bearer stored-key' },
+      }),
+    );
+
+    rag.close();
+  });
+
+  it('discovers embedding models with the Host key when a remote client has a redacted ref', async () => {
+    const { root, context, rag } = await setup();
+    const apiKeyRef = await createSecretResolver({
+      piwinRoot: root,
+      preferFileStore: true,
+    }).writeProviderSecret('notes-embedding', 'stored-key');
+    context.loadConfig = async () => ({
+      ...createDefaultPiwinConfig(),
+      notes: {
+        embedding: {
+          provider: 'openai-compatible',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'text-embedding-3-small',
+          apiKeyRef,
+        },
+      },
+    });
+    const fetchMock = vi.fn(async (_input: unknown, _init?: RequestInit) =>
+      new Response(JSON.stringify({ data: [{ id: 'text-embedding-3-small' }] }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await handleKnowledgeCommand(
+      {
+        type: 'knowledge/embedding-models/discover',
+        baseUrl: 'https://api.openai.com/v1',
+        apiKeyRef: '[stored-secret]',
+      },
+      'd1',
+      context,
+    );
+
+    expect(response).toMatchObject({
+      success: true,
+      data: { models: [{ id: 'text-embedding-3-small' }] },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.openai.com/v1/models',
+      expect.objectContaining({ method: 'GET' }),
+    );
+    const headers = fetchMock.mock.calls[0]?.[1]?.headers as Headers;
+    expect(headers.get('authorization')).toBe('Bearer stored-key');
+
+    await handleKnowledgeCommand(
+      {
+        type: 'knowledge/embedding-models/discover',
+        baseUrl: 'https://api.openai.com/v1',
+        apiKeyRef: '[stored-secret]',
+        apiKey: 'fresh-key',
+      },
+      'd2',
+      context,
+    );
+    const freshHeaders = fetchMock.mock.calls[1]?.[1]?.headers as Headers;
+    expect(freshHeaders.get('authorization')).toBe('Bearer fresh-key');
+    rag.close();
+  });
+
+  it('tests an embedding with the Host key when a remote client has a redacted ref', async () => {
+    const { root, context, rag } = await setup();
+    const apiKeyRef = await createSecretResolver({
+      piwinRoot: root,
+      preferFileStore: true,
+    }).writeProviderSecret('notes-embedding', 'stored-key');
+    context.loadConfig = async () => ({
+      ...createDefaultPiwinConfig(),
+      notes: {
+        embedding: {
+          provider: 'openai-compatible',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'text-embedding-3-small',
+          apiKeyRef,
+        },
+      },
+    });
+    const fetchMock = vi.fn(async () => embeddingResponse());
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await handleKnowledgeCommand(
+      {
+        type: 'knowledge/test-connection',
+        kind: 'embedding',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'text-embedding-3-small',
+        apiKeyRef: '[stored-secret]',
+      },
+      't-remote',
+      context,
+    );
+
+    expect(response).toMatchObject({ success: true });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.openai.com/v1/embeddings',
+      expect.objectContaining({
+        headers: { 'content-type': 'application/json', authorization: 'Bearer stored-key' },
+      }),
+    );
+    rag.close();
+  });
+
+  it('lets a just-typed key win over the stored reference', async () => {
+    const { root, context, rag } = await setup();
+    const apiKeyRef = await createSecretResolver({
+      piwinRoot: root,
+      preferFileStore: true,
+    }).writeProviderSecret('kb-probe-oneshot', 'stored-key');
+    const fetchMock = vi.fn(async () => embeddingResponse());
+    vi.stubGlobal('fetch', fetchMock);
+
+    await handleKnowledgeCommand(
+      {
+        type: 'knowledge/test-connection',
+        kind: 'embedding',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'text-embedding-3-small',
+        apiKey: 'typed-key',
+        apiKeyRef,
+      },
+      't3',
+      context,
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.openai.com/v1/embeddings',
+      expect.objectContaining({
+        headers: { 'content-type': 'application/json', authorization: 'Bearer typed-key' },
+      }),
+    );
+
+    rag.close();
+  });
+
+  it('returns the endpoint error as a failed response instead of throwing', async () => {
+    const { context, rag } = await setup();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: { message: 'Incorrect API key provided' } }), {
+            status: 401,
+            headers: { 'content-type': 'application/json' },
+          }),
+      ),
+    );
+
+    const response = await handleKnowledgeCommand(
+      {
+        type: 'knowledge/test-connection',
+        kind: 'embedding',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'text-embedding-3-small',
+      },
+      't4',
+      context,
+    );
+
+    expect(response).toMatchObject({
+      success: false,
+      command: 'knowledge/test-connection',
+      error: 'Incorrect API key provided',
+    });
+
+    rag.close();
+  });
+
+  it('reports a missing model id without dialing out', async () => {
+    const { context, rag } = await setup();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await handleKnowledgeCommand(
+      {
+        type: 'knowledge/test-connection',
+        kind: 'reranker',
+        baseUrl: 'https://api.jina.ai/v1',
+        model: '',
+      },
+      't5',
+      context,
+    );
+
+    expect(response).toMatchObject({ success: false, error: 'Model ID is required' });
+    expect(fetchMock).not.toHaveBeenCalled();
 
     rag.close();
   });

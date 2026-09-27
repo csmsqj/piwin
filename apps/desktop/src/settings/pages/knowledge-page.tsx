@@ -3,8 +3,12 @@
  * Models-page inspired two-column workspace with capability metrics, status beacons, and tab navigation.
  */
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
-import { Button, StatusBadge, Tabs } from '@piwin/ui-kit';
+import { Button, StatusBadge, Tabs, showErrorNotification, showSuccessNotification } from '@piwin/ui-kit';
 import { formatError } from '@piwin/contracts';
+import type {
+  KnowledgeConnectionTestCommand,
+  KnowledgeConnectionTestResult,
+} from '@piwin/contracts';
 import { useDesktopLocale } from '../../desktop-locale-context.js';
 import { useSettings } from '../settings-context.js';
 import {
@@ -29,17 +33,10 @@ import {
   validateKnowledgeExtrasDraft,
   type KnowledgeExtrasDraft,
 } from '../knowledge-extras-draft.js';
-import {
-  testKnowledgeEmbedding,
-  testKnowledgeParser,
-  testKnowledgeReranker,
-} from '../knowledge-test.js';
 import { KnowledgeCapabilityIcon } from './knowledge-capability-icon.js';
 import { WorkspaceSummary, WorkspaceTab, WorkspaceTabStrip } from '../settings-workspace-header.js';
-import {
-  KnowledgeEmbeddingTab,
-  type TestStatus,
-} from './knowledge-embedding-tab.js';
+import { KnowledgeEmbeddingTab } from './knowledge-embedding-tab.js';
+import { useKnowledgeEmbeddingConnection } from './use-knowledge-embedding-connection.js';
 import { KnowledgeRerankerTab } from './knowledge-reranker-tab.js';
 import {
   KnowledgeLlmsTab,
@@ -61,6 +58,7 @@ function KnowledgeBaseWorkspace(): ReactElement {
     setInfo,
     storeProviderSecret,
     loadProviderSecret,
+    request,
     remoteSettingsReadOnly,
   } = useSettings();
 
@@ -76,12 +74,6 @@ function KnowledgeBaseWorkspace(): ReactElement {
   const [testingTab, setTestingTab] = useState<
     'embedding' | 'reranker' | 'mineru' | 'unstructured' | null
   >(null);
-  const [testStatuses, setTestStatuses] = useState<{
-    embedding: TestStatus | null;
-    reranker: TestStatus | null;
-    mineru: TestStatus | null;
-    unstructured: TestStatus | null;
-  }>({ embedding: null, reranker: null, mineru: null, unstructured: null });
 
   useEffect(() => {
     setDraft(saved);
@@ -112,6 +104,14 @@ function KnowledgeBaseWorkspace(): ReactElement {
     patch(next);
   };
 
+  const embeddingConnection = useKnowledgeEmbeddingConnection({
+    draft,
+    isZh,
+    saving,
+    request,
+    loadProviderSecret,
+  });
+
   const isEmbeddingReady = draft.enabled && draft.model.trim().length > 0;
   const isRerankerReady = extras.rerankerEnabled && extras.rerankerModel.trim().length > 0;
   const isMineruReady = extras.mineruEnabled && extras.mineruBaseUrl.trim().length > 0;
@@ -119,47 +119,64 @@ function KnowledgeBaseWorkspace(): ReactElement {
     extras.unstructuredEnabled && extras.unstructuredBaseUrl.trim().length > 0;
   const isParserReady = isMineruReady || isUnstructuredReady;
 
+  /**
+   * Runs a knowledge endpoint probe on the Host.
+   *
+   * The WebView CSP pins `connect-src` to `'self'`/`ipc:`, so fetching an
+   * embedding / reranker / parser base URL from here never leaves the app and
+   * every "Test connection" click failed with a bare network error. The Host
+   * owns the round trip and resolves `apiKeyRef` / `apiKeyEnv` from its secret
+   * store, so a stored key no longer has to travel back into the renderer. A
+   * key the user just typed is passed one-shot for this probe only.
+   */
+  const runKnowledgeProbe = async (
+    test: Omit<KnowledgeConnectionTestCommand, 'id' | 'type'>,
+  ): Promise<KnowledgeConnectionTestResult> => {
+    const response = await request({ type: 'knowledge/test-connection', knowledgeTest: test });
+    if (!response.success) {
+      throw new Error(response.error || 'knowledge/test-connection failed');
+    }
+    const data = response.data as { durationMs?: number; dimension?: number } | undefined;
+    return {
+      durationMs: typeof data?.durationMs === 'number' ? data.durationMs : 0,
+      ...(typeof data?.dimension === 'number' ? { dimension: data.dimension } : {}),
+    };
+  };
+
   const handleTestEmbedding = async (): Promise<void> => {
     if (testingTab || saving) return;
     const baseUrl = draft.baseUrl.trim() || (draft.provider === 'ollama' ? DEFAULT_OLLAMA_EMBEDDING_URL : DEFAULT_OPENAI_EMBEDDING_URL);
     const model = draft.model.trim();
     if (!model) {
-      setError(isZh ? '请先填写 Embedding 模型 ID。' : 'Please enter an embedding model ID first.');
+      showErrorNotification(
+        isZh ? '请先填写 Embedding 模型 ID。' : 'Please enter an embedding model ID first.',
+      );
       return;
     }
 
     setTestingTab('embedding');
-    setError(null);
     try {
-      let apiKey = draft.apiKeyInput?.trim();
-      if (!apiKey && draft.apiKeyRef) {
-        const loaded = await loadProviderSecret(NOTES_EMBEDDING_SECRET_ID);
-        if (loaded) apiKey = loaded;
-      }
-
-      const result = await testKnowledgeEmbedding({
+      const oneShotApiKey = draft.apiKeyInput?.trim();
+      const apiKeyEnv = draft.apiKeyEnv.trim();
+      const apiKeyRef = draft.apiKeyRef.trim();
+      const result = await runKnowledgeProbe({
+        kind: 'embedding',
         provider: draft.provider,
         baseUrl,
         model,
-        ...(apiKey ? { apiKey } : {}),
+        ...(oneShotApiKey ? { apiKey: oneShotApiKey } : {}),
+        ...(apiKeyEnv ? { apiKeyEnv } : {}),
+        ...(apiKeyRef ? { apiKeyRef } : {}),
       });
 
       const message = isZh
         ? `连接成功 · ${result.durationMs}ms${result.dimension ? ` · 维度: ${result.dimension}` : ''}`
         : `Connected · ${result.durationMs}ms${result.dimension ? ` · dim: ${result.dimension}` : ''}`;
 
-      setTestStatuses((prev) => ({
-        ...prev,
-        embedding: { tone: 'ok', message },
-      }));
-      setInfo(message, 'success');
+      showSuccessNotification(message);
     } catch (err) {
       const message = `${isZh ? '连接失败：' : 'Connection failed: '}${formatError(err)}`;
-      setTestStatuses((prev) => ({
-        ...prev,
-        embedding: { tone: 'err', message },
-      }));
-      setError(message);
+      showErrorNotification(message);
     } finally {
       setTestingTab(null);
     }
@@ -170,45 +187,40 @@ function KnowledgeBaseWorkspace(): ReactElement {
     const baseUrl = extras.rerankerBaseUrl.trim();
     const model = extras.rerankerModel.trim();
     if (!baseUrl) {
-      setError(isZh ? '请先填写 Reranker Base URL。' : 'Please enter a reranker Base URL first.');
+      showErrorNotification(
+        isZh ? '请先填写 Reranker Base URL。' : 'Please enter a reranker Base URL first.',
+      );
       return;
     }
     if (!model) {
-      setError(isZh ? '请先填写 Reranker 模型 ID。' : 'Please enter a reranker model ID first.');
+      showErrorNotification(
+        isZh ? '请先填写 Reranker 模型 ID。' : 'Please enter a reranker model ID first.',
+      );
       return;
     }
 
     setTestingTab('reranker');
-    setError(null);
     try {
-      let apiKey = extras.rerankerApiKeyInput?.trim();
-      if (!apiKey && extras.rerankerApiKeyRef) {
-        const loaded = await loadProviderSecret(KNOWLEDGE_RERANKER_SECRET_ID);
-        if (loaded) apiKey = loaded;
-      }
-
-      const result = await testKnowledgeReranker({
+      const oneShotApiKey = extras.rerankerApiKeyInput?.trim();
+      const apiKeyEnv = extras.rerankerApiKeyEnv.trim();
+      const apiKeyRef = extras.rerankerApiKeyRef.trim();
+      const result = await runKnowledgeProbe({
+        kind: 'reranker',
         baseUrl,
         model,
-        ...(apiKey ? { apiKey } : {}),
+        ...(oneShotApiKey ? { apiKey: oneShotApiKey } : {}),
+        ...(apiKeyEnv ? { apiKeyEnv } : {}),
+        ...(apiKeyRef ? { apiKeyRef } : {}),
       });
 
       const message = isZh
         ? `连接成功 · ${result.durationMs}ms`
         : `Connected · ${result.durationMs}ms`;
 
-      setTestStatuses((prev) => ({
-        ...prev,
-        reranker: { tone: 'ok', message },
-      }));
-      setInfo(message, 'success');
+      showSuccessNotification(message);
     } catch (err) {
       const message = `${isZh ? '连接失败：' : 'Connection failed: '}${formatError(err)}`;
-      setTestStatuses((prev) => ({
-        ...prev,
-        reranker: { tone: 'err', message },
-      }));
-      setError(message);
+      showErrorNotification(message);
     } finally {
       setTestingTab(null);
     }
@@ -220,40 +232,36 @@ function KnowledgeBaseWorkspace(): ReactElement {
       kind === 'mineru' ? extras.mineruBaseUrl.trim() : extras.unstructuredBaseUrl.trim();
     const label = kind === 'mineru' ? 'MinerU' : 'Unstructured';
     if (!baseUrl) {
-      setError(
+      showErrorNotification(
         isZh ? `请先填写 ${label} Base URL。` : `Please enter a ${label} Base URL first.`,
       );
       return;
     }
 
     setTestingTab(kind);
-    setError(null);
     try {
-      let apiKey =
+      const oneShotApiKey =
         kind === 'mineru'
           ? extras.mineruApiKeyInput?.trim()
           : extras.unstructuredApiKeyInput?.trim();
-      if (!apiKey) {
-        const secretId =
-          kind === 'mineru' ? KNOWLEDGE_MINERU_SECRET_ID : KNOWLEDGE_UNSTRUCTURED_SECRET_ID;
-        const loaded = await loadProviderSecret(secretId);
-        if (loaded) apiKey = loaded;
-      }
-
-      const result = await testKnowledgeParser({
+      const apiKeyEnv =
+        kind === 'mineru' ? extras.mineruApiKeyEnv.trim() : extras.unstructuredApiKeyEnv.trim();
+      const apiKeyRef =
+        kind === 'mineru' ? extras.mineruApiKeyRef.trim() : extras.unstructuredApiKeyRef.trim();
+      const result = await runKnowledgeProbe({
         kind,
         baseUrl,
-        ...(apiKey ? { apiKey } : {}),
+        ...(oneShotApiKey ? { apiKey: oneShotApiKey } : {}),
+        ...(apiKeyEnv ? { apiKeyEnv } : {}),
+        ...(apiKeyRef ? { apiKeyRef } : {}),
       });
       const message = isZh
         ? `连接成功 · ${result.durationMs}ms`
         : `Connected · ${result.durationMs}ms`;
-      setTestStatuses((prev) => ({ ...prev, [kind]: { tone: 'ok', message } }));
-      setInfo(message, 'success');
+      showSuccessNotification(message);
     } catch (err) {
       const message = `${isZh ? '连接失败：' : 'Connection failed: '}${formatError(err)}`;
-      setTestStatuses((prev) => ({ ...prev, [kind]: { tone: 'err', message } }));
-      setError(message);
+      showErrorNotification(message);
     } finally {
       setTestingTab(null);
     }
@@ -458,8 +466,11 @@ function KnowledgeBaseWorkspace(): ReactElement {
               patch={patch}
               onProviderChange={handleProviderChange}
               onTest={() => void handleTestEmbedding()}
+              onDiscover={() => void embeddingConnection.discoverModels()}
+              onRevealKey={embeddingConnection.revealKey}
+              discoveredModels={embeddingConnection.discoveredModels}
+              discovering={embeddingConnection.discovering}
               testing={testingTab === 'embedding'}
-              testStatus={testStatuses.embedding}
               saving={saving}
               readOnly={remoteSettingsReadOnly === true}
               isZh={isZh}
@@ -471,7 +482,6 @@ function KnowledgeBaseWorkspace(): ReactElement {
               patchExtras={patchExtras}
               onTest={() => void handleTestReranker()}
               testing={testingTab === 'reranker'}
-              testStatus={testStatuses.reranker}
               saving={saving}
               readOnly={remoteSettingsReadOnly === true}
               isZh={isZh}
@@ -487,8 +497,6 @@ function KnowledgeBaseWorkspace(): ReactElement {
               testing={
                 testingTab === 'mineru' || testingTab === 'unstructured' ? testingTab : null
               }
-              mineruTestStatus={testStatuses.mineru}
-              unstructuredTestStatus={testStatuses.unstructured}
               saving={saving}
               readOnly={remoteSettingsReadOnly === true}
             />
@@ -508,7 +516,11 @@ function KnowledgeBaseWorkspace(): ReactElement {
                 onClick={() => void handleSave()}
                 data-testid="knowledge-embedding-save"
               >
-                {saving ? (isZh ? '保存中…' : 'Saving…') : isZh ? '保存知识配置' : 'Save knowledge'}
+                {saving
+                  ? (isZh ? '保存中…' : 'Saving…')
+                  : draft.apiKeyInput?.trim()
+                    ? (isZh ? '保存配置和 API Key' : 'Save config and API key')
+                    : isZh ? '保存知识配置' : 'Save knowledge'}
               </Button>
             </div>
           </div>

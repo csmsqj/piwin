@@ -258,6 +258,20 @@ export async function handleMockKnowledgeCommands(
       if (!match) return fail(id, command.type, `Concept not found: ${slug}`);
       return ok(id, command.type, { concept: match });
     }
+    case 'knowledge/test-connection': {
+      // Offline mock: never dial out, just report a plausible probe.
+      return ok(id, command.type, {
+        durationMs: 42,
+        ...(command.kind === 'embedding' ? { dimension: 1536 } : {}),
+      });
+    }
+    case 'knowledge/embedding-models/discover': {
+      return ok(id, command.type, {
+        providerId: 'notes-embedding',
+        protocol: 'openai-compatible',
+        models: [{ id: 'text-embedding-3-small' }, { id: 'nomic-embed-text' }],
+      });
+    }
     case 'knowledge/wiki/distill': {
       const baseId = (command as { baseId: string }).baseId;
       const base = state.bases.find((entry) => entry.id === baseId);

@@ -1,16 +1,18 @@
 /**
  * Knowledge Settings → Embedding Tab Panel.
  */
-import type { ReactElement } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
+import type { DiscoveredModel } from '@piwin/contracts';
 import {
-  PasswordInput,
+  Button,
+  IconButton,
   Select,
   Switch,
   TextInput,
 } from '@piwin/ui-kit';
 import {
-  IconAlertCircle,
-  IconCheckCircle,
+  IconEye,
+  IconEyeOff,
   IconRefresh,
   IconSpark,
 } from '../../shell-icons.js';
@@ -23,11 +25,6 @@ import {
   type KnowledgeEmbeddingDraft,
   type KnowledgeEmbeddingProviderKind,
 } from '../knowledge-embedding-draft.js';
-
-export type TestStatus = {
-  tone: 'ok' | 'err';
-  message: string;
-};
 
 const PROVIDER_OPTIONS: Array<{
   value: KnowledgeEmbeddingProviderKind;
@@ -44,8 +41,11 @@ export type KnowledgeEmbeddingTabProps = {
   patch: (partial: Partial<KnowledgeEmbeddingDraft>) => void;
   onProviderChange: (value: string) => void;
   onTest: () => void;
+  onDiscover: () => void;
+  onRevealKey: () => Promise<string | null>;
+  discoveredModels: DiscoveredModel[];
+  discovering: boolean;
   testing: boolean;
-  testStatus: TestStatus | null;
   saving: boolean;
   readOnly: boolean;
   isZh: boolean;
@@ -54,6 +54,38 @@ export type KnowledgeEmbeddingTabProps = {
 export function KnowledgeEmbeddingTab(props: KnowledgeEmbeddingTabProps): ReactElement {
   const { isZh, draft, patch } = props;
   const hasStoredKey = Boolean(draft.apiKeyRef);
+  const [showKey, setShowKey] = useState(false);
+  const [revealedKey, setRevealedKey] = useState('');
+  const [revealingKey, setRevealingKey] = useState(false);
+
+  useEffect(() => {
+    if (props.saving || !props.active) {
+      setShowKey(false);
+      setRevealedKey('');
+    }
+  }, [props.saving, props.active]);
+
+  const toggleKey = async (): Promise<void> => {
+    if (showKey) {
+      setShowKey(false);
+      setRevealedKey('');
+      return;
+    }
+    if (draft.apiKeyInput || !hasStoredKey) {
+      setShowKey(true);
+      return;
+    }
+    setRevealingKey(true);
+    try {
+      const key = await props.onRevealKey();
+      if (key) {
+        setRevealedKey(key);
+        setShowKey(true);
+      }
+    } finally {
+      setRevealingKey(false);
+    }
+  };
 
   return (
     <div
@@ -95,20 +127,6 @@ export function KnowledgeEmbeddingTab(props: KnowledgeEmbeddingTabProps): ReactE
           </div>
         ) : null}
       </div>
-
-      {props.testStatus ? (
-        <div
-          className={`knowledge-test-result is-${props.testStatus.tone}`}
-          data-testid="knowledge-embedding-test-result"
-        >
-          {props.testStatus.tone === 'ok' ? (
-            <IconCheckCircle size={14} />
-          ) : (
-            <IconAlertCircle size={14} />
-          )}
-          <span>{props.testStatus.message}</span>
-        </div>
-      ) : null}
 
       <FieldRow
         label={isZh ? '启用向量检索' : 'Enable embedding'}
@@ -177,20 +195,56 @@ export function KnowledgeEmbeddingTab(props: KnowledgeEmbeddingTabProps): ReactE
             label={isZh ? '模型 ID' : 'Model ID'}
             description={
               isZh
-                ? '接口上的 embedding 模型名，例如 text-embedding-3-small 或 nomic-embed-text。'
-                : 'The embedding model name on that endpoint, for example text-embedding-3-small or nomic-embed-text.'
+                ? '可手填模型 ID，或拉取接口模型后选择 Embedding 模型并测试连接。'
+                : 'Enter a model ID, or fetch endpoint models and test an embedding model.'
             }
             testId="knowledge-embedding-model-row"
           >
-            <TextInput
-              testId="knowledge-embedding-model"
-              value={draft.model}
-              onChange={(event) => patch({ model: event.currentTarget.value })}
-              placeholder={
-                draft.provider === 'ollama' ? 'nomic-embed-text' : 'text-embedding-3-small'
-              }
-              disabled={props.saving || props.readOnly}
-            />
+            <div className="knowledge-model-picker">
+              <div className="knowledge-model-picker-input">
+                <TextInput
+                  testId="knowledge-embedding-model"
+                  value={draft.model}
+                  onChange={(event) => patch({ model: event.currentTarget.value })}
+                  placeholder={
+                    draft.provider === 'ollama' ? 'nomic-embed-text' : 'text-embedding-3-small'
+                  }
+                  disabled={props.saving || props.readOnly}
+                />
+                <Button
+                  size="compact"
+                  variant="secondary"
+                  onClick={props.onDiscover}
+                  disabled={props.discovering || props.saving || props.readOnly}
+                  data-testid="knowledge-embedding-discover"
+                >
+                  {props.discovering
+                    ? <IconRefresh className="spin" size={13} />
+                    : <IconRefresh size={13} />}
+                  {props.discovering
+                    ? (isZh ? '拉取中…' : 'Fetching…')
+                    : (isZh ? '拉取模型' : 'Fetch models')}
+                </Button>
+              </div>
+              {props.discoveredModels.length > 0 ? (
+                <Select
+                  data={[
+                    { value: '', label: isZh ? '选择拉取的模型' : 'Select a fetched model' },
+                    ...props.discoveredModels.map((model) => ({
+                      value: model.id,
+                      label: model.label ? `${model.label} · ${model.id}` : model.id,
+                    })),
+                  ]}
+                  value={props.discoveredModels.some((model) => model.id === draft.model)
+                    ? draft.model
+                    : ''}
+                  onChange={(event) => patch({ model: event.currentTarget.value })}
+                  disabled={props.saving || props.readOnly}
+                  testId="knowledge-embedding-discovered-models"
+                  aria-label={isZh ? '已拉取的模型' : 'Fetched models'}
+                />
+              ) : null}
+            </div>
           </FieldRow>
 
           <FieldRow
@@ -226,22 +280,39 @@ export function KnowledgeEmbeddingTab(props: KnowledgeEmbeddingTabProps): ReactE
             }
             testId="knowledge-embedding-secret-row"
           >
-            <PasswordInput
-              testId="knowledge-embedding-api-key"
-              value={draft.apiKeyInput ?? ''}
-              onChange={(event) => patch({ apiKeyInput: event.currentTarget.value })}
-              placeholder={
-                hasStoredKey
-                  ? isZh
-                    ? '留空使用已有密钥，输入新 Key 覆盖'
-                    : 'Leave blank to keep existing key, or enter new key'
-                  : isZh
-                    ? '粘贴 API Key（本地 Ollama 可留空）'
-                    : 'Paste API Key (optional for local Ollama)'
-              }
-              spellCheck={false}
-              disabled={props.saving || props.readOnly}
-            />
+            <div className="pconn-key">
+              <TextInput
+                testId="knowledge-embedding-api-key"
+                type={showKey ? 'text' : 'password'}
+                value={draft.apiKeyInput || (showKey ? revealedKey : '')}
+                onChange={(event) => {
+                  setRevealedKey('');
+                  patch({ apiKeyInput: event.currentTarget.value });
+                }}
+                placeholder={
+                  hasStoredKey
+                    ? '••••••••••••'
+                    : isZh
+                      ? '粘贴 API Key（本地 Ollama 可留空）'
+                      : 'Paste API Key (optional for local Ollama)'
+                }
+                spellCheck={false}
+                autoComplete="off"
+                disabled={props.saving || props.readOnly}
+              />
+              <IconButton
+                className="pconn-key-eye"
+                label={showKey
+                  ? (isZh ? '隐藏密钥' : 'Hide key')
+                  : (isZh ? '显示密钥' : 'Show key')}
+                size={26}
+                onClick={() => void toggleKey()}
+                disabled={props.saving || props.readOnly || revealingKey}
+                data-testid="knowledge-embedding-toggle-key"
+              >
+                {showKey ? <IconEyeOff width={14} height={14} /> : <IconEye width={14} height={14} />}
+              </IconButton>
+            </div>
           </FieldRow>
 
           <details className="knowledge-advanced-disclosure">

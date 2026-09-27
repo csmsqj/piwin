@@ -57,6 +57,13 @@ the list to half the page, and model rows carried four unlabeled icon buttons.
   `styles/settings-workspace.css`) used by Models and Knowledge, replacing the
   metric tiles and vertical capability nav both pages carried. Knowledge shows
   each capability's state as a dot on its tab.
+- **Knowledge embedding connection.** The embedding tab uses a Host-side
+  `knowledge/embedding-models/discover` command and the same stored-key reveal
+  action as Models. Fetching lists endpoint model IDs for selection while
+  keeping manual entry available.
+  Testing probes the current draft on the Host. Saving knowledge settings
+  stores a newly entered API key in the Host secret store and persists its
+  reference; revealing a saved key does not count as an edit.
 - **Custom channels get an ink monogram**, not the protocol vendor's logo
   (seven relays used to share one black OpenAI tile). Vendor presets and OAuth
   plans keep their brand mark.

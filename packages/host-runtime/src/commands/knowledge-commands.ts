@@ -36,6 +36,7 @@ import type { CompleteJsonFn, DraftCardsFn } from '@piwin/doc-rag';
 import type { DoccardsIngestionRegistry } from './doccards-job-commands.js';
 import type { DoccardsGenerationRegistry } from './doccards-generation-jobs.js';
 import type { HostPush } from '@piwin/contracts';
+import type { SecretResolver } from '../secret-resolver.js';
 
 export type KnowledgeCommandContext = {
   getNotesServices: () => Promise<{
@@ -57,6 +58,12 @@ export type KnowledgeCommandContext = {
     cardIds: string[];
   }) => Promise<{ sessionId: string }>;
   piwinRoot?: string;
+  /**
+   * Knowledge probes resolve the stored embedding key on the Host. Tests
+   * inject a file-store-only resolver so the lookup never reaches the
+   * developer's real keychain entry for the same provider service.
+   */
+  secretResolver?: Pick<SecretResolver, 'readSecretByRef'>;
 };
 
 const TYPES = new Set<HostCommand['type']>([
@@ -98,6 +105,11 @@ const TYPES = new Set<HostCommand['type']>([
   'session/set-knowledge-bases',
   'knowledge/wiki/overview',
   'knowledge/wiki/concept',
+  // Gated here as well as in knowledge-base-commands: this set is the outer
+  // entry check, so a type missing from it never reaches the base handler.
+  'knowledge/wiki/distill',
+  'knowledge/test-connection',
+  'knowledge/embedding-models/discover',
 ]);
 
 /** One notes rebuild at a time for this Host process. */

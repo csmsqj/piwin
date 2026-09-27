@@ -203,6 +203,53 @@ export type WikiDistillResult = {
   sourcePaths: string[];
 };
 
+/** Which knowledge capability endpoint a Host-side connection probe targets. */
+export type KnowledgeConnectionTestKind = 'embedding' | 'reranker' | 'mineru' | 'unstructured';
+
+export type KnowledgeConnectionTestResult = {
+  durationMs: number;
+  /** Embedding probes report the vector width the endpoint returned. */
+  dimension?: number;
+};
+
+/**
+ * Probes one knowledge endpoint from the Host.
+ *
+ * The desktop WebView runs under a CSP with `connect-src 'self' ipc: …`, so a
+ * renderer-side fetch to an embedding / reranker / parser base URL never leaves
+ * the app. The probe therefore runs where the network is — the Host — and only
+ * the timings travel back.
+ *
+ * `baseUrl` / `model` carry the live draft values: the point of the button is
+ * to test before saving. `apiKey` is one-shot and never persisted;
+ * `apiKeyRef` / `apiKeyEnv` are resolved by the Host secret store so a stored
+ * key never travels back into the renderer.
+ */
+export type KnowledgeConnectionTestCommand = {
+  id?: string;
+  type: 'knowledge/test-connection';
+  kind: KnowledgeConnectionTestKind;
+  baseUrl: string;
+  provider?: 'openai-compatible' | 'ollama';
+  model?: string;
+  apiKey?: string;
+  apiKeyRef?: string;
+  apiKeyEnv?: string;
+};
+
+/** Lists embedding model IDs from the draft endpoint without changing config.
+ * A remote shell may send a redacted stored-secret marker; Host resolves its
+ * saved credential. A just-typed apiKey is used only for this request.
+ */
+export type KnowledgeEmbeddingModelsDiscoverCommand = {
+  id?: string;
+  type: 'knowledge/embedding-models/discover';
+  baseUrl: string;
+  apiKey?: string;
+  apiKeyRef?: string;
+  apiKeyEnv?: string;
+};
+
 export type KnowledgeBaseHostCommand =
   | { id?: string; type: 'knowledge/bases/list' }
   /** Idempotent: re-adding a registered folder returns the existing base. */
@@ -236,7 +283,10 @@ export type KnowledgeBaseHostCommand =
    * writes it into the wiki (INDEX.md and LOG.md follow). Needs a configured
    * model; `topic` narrows which slices are retrieved.
    */
-  | { id?: string; type: 'knowledge/wiki/distill'; baseId: string; topic?: string };
+  | { id?: string; type: 'knowledge/wiki/distill'; baseId: string; topic?: string }
+  /** Connectivity probe for one configured knowledge endpoint (see the type above). */
+  | KnowledgeConnectionTestCommand
+  | KnowledgeEmbeddingModelsDiscoverCommand;
 
 /** Full list on any registry or derived-state change. */
 export type KnowledgeBasesChangedPush = {

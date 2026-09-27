@@ -11,17 +11,10 @@ import type {
   PiwinConfig,
   PluginInstallSource,
 } from '@piwin/contracts';
-import { partitionRemoteSettingsMutations, type SettingsMutation } from '@piwin/contracts';
 import type { HostClient } from './host-client';
 import { createGestureIdempotencyKey } from './gesture-idempotency.js';
-import { isSettingsRevisionConflict } from './host-problem-copy.js';
-import { enqueueSettingsApply } from './settings-apply-chain.js';
 import { sessionListCommandForTransport } from './remote-session-hydrate';
-import {
-  settingsApplyInputFromSnapshot,
-  settingsMutationsAdmittedByRemoteSnapshot,
-} from './settings-apply-input.js';
-import { settingsMutationsFromViewDraft } from './settings/settings-view-config.js';
+import { applyConfigDraft, getSettingsAsLegacyConfigView } from './settings-request-apply.js';
 
 export type HostRequestAdapters = {
   requestSubAgent: (command: Parameters<HostClient['request']>[0]) => Promise<HostResponse>;
@@ -43,6 +36,8 @@ export type HostRequestAdapters = {
       | 'secrets/get'
       | 'web/test-search-source'
       | 'code-search/test-windsurf'
+      | 'knowledge/test-connection'
+      | 'knowledge/embedding-models/discover'
       | 'web/search-route-preview'
       | 'web/search-log-list'
       | 'web/search-log-clear'
@@ -109,6 +104,9 @@ export type HostRequestAdapters = {
       | import('@piwin/contracts').VisionDelegateInput
       | import('@piwin/contracts').SearchRoutePreviewInput;
     webTest?: import('@piwin/contracts').WebSearchTestInput;
+    /** knowledge/test-connection: the live endpoint draft, probed by the Host. */
+    knowledgeTest?: Omit<import('@piwin/contracts').KnowledgeConnectionTestCommand, 'id' | 'type'>;
+    knowledgeDiscover?: Omit<import('@piwin/contracts').KnowledgeEmbeddingModelsDiscoverCommand, 'id' | 'type'>;
     /** web/search-log-list: all calls or only (partially) failed ones. */
     logStatus?: import('@piwin/contracts').WebSearchLogStatusFilter;
   }) => Promise<HostResponse>;
@@ -230,184 +228,7 @@ export type HostRequestAdapters = {
   }) => Promise<HostResponse>;
 };
 
-async function getSettingsAsLegacyConfigView(hostClient: HostClient): Promise<HostResponse> {
-  const response = await hostClient.request({ type: 'settings/get' });
-  if (!response.success) {
-    return response;
-  }
-  const data = response.data as {
-    snapshot?: {
-      config: PiwinConfig;
-      revision: string;
-      schemaVersion: number;
-    };
-    root?: string;
-  };
-  if (!data.snapshot) {
-    return {
-      ...response,
-      success: false,
-      error: 'settings/get returned no snapshot',
-    };
-  }
-  return {
-    ...response,
-    data: {
-      config: data.snapshot.config,
-      root: data.root ?? (hostClient.getTransport() === 'remote' ? 'Remote Host' : '~/.piwin'),
-      revision: data.snapshot.revision,
-      schemaVersion: data.snapshot.schemaVersion,
-    },
-  };
-}
-
-export function allowedRemoteSettingsMutations(
-  requested: SettingsMutation[],
-): SettingsMutation[] | undefined {
-  const { allowed, blocked } = partitionRemoteSettingsMutations(requested);
-  if (allowed.length > 0) {
-    return allowed;
-  }
-  return blocked.length > 0 ? undefined : allowed;
-}
-
-/** Remote Hosts reject `desktop`. Write the shared defaults instead. */
-export function composerProfileSettingsMutations(input: {
-  transport: string;
-  currentDesktop: PiwinConfig['desktop'];
-  composerProfile: NonNullable<PiwinConfig['desktop']>['composerProfile'];
-  currentThinking: PiwinConfig['thinking'];
-  selectedModel: { providerId: string; modelId: string } | undefined;
-}): SettingsMutation[] {
-  const desktopMutation: SettingsMutation = {
-    kind: 'replace-domain',
-    domain: 'desktop',
-    value: {
-      ...input.currentDesktop,
-      composerProfile: input.composerProfile,
-    } as NonNullable<PiwinConfig['desktop']>,
-  };
-  if (input.transport === 'remote') {
-    const mutations: SettingsMutation[] = [desktopMutation];
-    if (input.selectedModel) {
-      mutations.push({
-        kind: 'replace-domain',
-        domain: 'defaultProviderId',
-        value: input.selectedModel.providerId,
-      });
-      mutations.push({
-        kind: 'replace-domain',
-        domain: 'defaultModelId',
-        value: input.selectedModel.modelId,
-      });
-    }
-    const thinkingLevel = input.composerProfile?.thinkingLevel;
-    mutations.push({
-      kind: 'replace-domain',
-      domain: 'thinking',
-      value: {
-        ultraEnabled: input.currentThinking?.ultraEnabled === true,
-        ...(thinkingLevel === undefined ? {} : { defaultLevel: thinkingLevel }),
-      },
-    });
-    return mutations;
-  }
-  return [desktopMutation];
-}
-
-/** Remote Hosts reject `desktop`. Skip it instead of toasting a payload reject. */
-export function settingsMutationsForHostApply(
-  requested: SettingsMutation[],
-  transport: string,
-): SettingsMutation[] {
-  if (transport !== 'remote') {
-    return requested;
-  }
-  return partitionRemoteSettingsMutations(requested).allowed;
-}
-
-async function applyConfigDraft(
-  hostClient: HostClient,
-  nextConfig: PiwinConfig,
-): Promise<HostResponse> {
-  return enqueueSettingsApply(async () => {
-    const first = await applyConfigDraftOnce(hostClient, nextConfig);
-    if (!isSettingsRevisionConflict(first)) {
-      return first;
-    }
-    return applyConfigDraftOnce(hostClient, nextConfig);
-  });
-}
-
-async function applyConfigDraftOnce(
-  hostClient: HostClient,
-  nextConfig: PiwinConfig,
-): Promise<HostResponse> {
-  const currentResponse = await hostClient.request({ type: 'settings/get' });
-  if (!currentResponse.success) {
-    return currentResponse;
-  }
-  const data = currentResponse.data as {
-    snapshot?: {
-      config: PiwinConfig;
-      revision: string;
-      domainRevisions?: import('@piwin/contracts').SettingsSnapshot['domainRevisions'];
-    };
-  };
-  if (!data.snapshot) {
-    return {
-      type: 'response',
-      command: 'settings/apply',
-      success: false,
-      error: 'settings/get returned no snapshot',
-    };
-  }
-  const requested = settingsMutationsFromViewDraft(data.snapshot.config, nextConfig);
-  const emptyApply = {
-    type: 'response' as const,
-    command: 'settings/apply' as const,
-    success: true as const,
-    data: { snapshot: data.snapshot, changedDomains: [] },
-  };
-  let mutations: SettingsMutation[];
-  if (hostClient.getTransport() === 'remote') {
-    const admitted = allowedRemoteSettingsMutations(requested);
-    if (admitted === undefined) {
-      return emptyApply;
-    }
-    mutations = settingsMutationsAdmittedByRemoteSnapshot(
-      admitted,
-      data.snapshot.domainRevisions,
-      data.snapshot.config.notes,
-    );
-    if (admitted.length > 0 && mutations.length === 0) {
-      return {
-        type: 'response',
-        command: 'settings/apply',
-        success: false,
-        error: 'Remote Host does not accept these settings domains yet',
-      };
-    }
-  } else {
-    mutations = requested;
-  }
-  if (mutations.length === 0) {
-    return emptyApply;
-  }
-  return hostClient.request(
-    {
-      type: 'settings/apply',
-      input: settingsApplyInputFromSnapshot(
-        {
-          revision: data.snapshot.revision,
-          domainRevisions: data.snapshot.domainRevisions ?? {},
-        },
-        mutations,
-      ),
-    },
-    { idempotencyKey: createGestureIdempotencyKey() },
-  );
-}
+export { allowedRemoteSettingsMutations, composerProfileSettingsMutations, settingsMutationsForHostApply } from './settings-request-apply.js';
 
 export function createHostRequestAdapters(hostClient: HostClient): HostRequestAdapters {
   return {
@@ -545,6 +366,30 @@ export function createHostRequestAdapters(hostClient: HostClient): HostRequestAd
           ...(command.apiKeyRef ? { apiKeyRef: command.apiKeyRef } : {}),
           ...(command.apiKeyEnv ? { apiKeyEnv: command.apiKeyEnv } : {}),
         });
+      }
+      if (command.type === 'knowledge/test-connection') {
+        if (!command.knowledgeTest) {
+          return {
+            type: 'response',
+            command: 'knowledge/test-connection',
+            success: false,
+            error: 'knowledge test input is required',
+          };
+        }
+        // The Host owns the probe: it resolves apiKeyRef / apiKeyEnv from the
+        // secret store and does the fetch the renderer CSP forbids.
+        return hostClient.request({ type: 'knowledge/test-connection', ...command.knowledgeTest });
+      }
+      if (command.type === 'knowledge/embedding-models/discover') {
+        if (!command.knowledgeDiscover) {
+          return {
+            type: 'response',
+            command: command.type,
+            success: false,
+            error: 'knowledge discovery input is required',
+          };
+        }
+        return hostClient.request({ type: command.type, ...command.knowledgeDiscover });
       }
       if (command.type === 'web/search-route-preview') {
         if (!command.input) {

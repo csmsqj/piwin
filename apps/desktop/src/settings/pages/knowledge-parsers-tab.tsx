@@ -4,8 +4,6 @@
 import type { ReactElement } from 'react';
 import { PasswordInput, Select, Switch, TextInput } from '@piwin/ui-kit';
 import {
-  IconAlertCircle,
-  IconCheckCircle,
   IconRefresh,
   IconSpark,
 } from '../../shell-icons.js';
@@ -19,7 +17,6 @@ import {
   type KnowledgeChatModelOption,
   type KnowledgeExtrasDraft,
 } from '../knowledge-extras-draft.js';
-import type { TestStatus } from './knowledge-embedding-tab.js';
 
 export function KnowledgeParsersTab(props: {
   active: boolean;
@@ -29,8 +26,6 @@ export function KnowledgeParsersTab(props: {
   onTestMineru: () => void;
   onTestUnstructured: () => void;
   testing: 'mineru' | 'unstructured' | null;
-  mineruTestStatus: TestStatus | null;
-  unstructuredTestStatus: TestStatus | null;
   saving: boolean;
   readOnly: boolean;
 }): ReactElement {
@@ -95,18 +90,6 @@ export function KnowledgeParsersTab(props: {
           </div>
         ) : null}
       </div>
-      {props.mineruTestStatus ? (
-        <ParserTestResult
-          testId="knowledge-mineru-test-result"
-          status={props.mineruTestStatus}
-        />
-      ) : null}
-      {props.unstructuredTestStatus ? (
-        <ParserTestResult
-          testId="knowledge-unstructured-test-result"
-          status={props.unstructuredTestStatus}
-        />
-      ) : null}
       <FieldRow
         label="MinerU (PDF)"
         description={
@@ -223,19 +206,6 @@ function ParserTestButton(props: {
         </>
       )}
     </button>
-  );
-}
-
-function ParserTestResult(props: { testId: string; status: TestStatus }): ReactElement {
-  return (
-    <div className={`knowledge-test-result is-${props.status.tone}`} data-testid={props.testId}>
-      {props.status.tone === 'ok' ? (
-        <IconCheckCircle width={14} height={14} />
-      ) : (
-        <IconAlertCircle width={14} height={14} />
-      )}
-      <span>{props.status.message}</span>
-    </div>
   );
 }
 

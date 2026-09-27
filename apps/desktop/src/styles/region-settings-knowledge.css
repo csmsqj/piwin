@@ -54,8 +54,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .knowledge-tab-panel.is-active,
-  .knowledge-test-result {
+  .knowledge-tab-panel.is-active {
     animation: none;
   }
 }
@@ -126,29 +125,6 @@
   }
 }
 
-.knowledge-test-result {
-  display: flex;
-  align-items: center;
-  gap: var(--s-4);
-  padding: var(--s-4) var(--s-5);
-  border-radius: var(--r-control);
-  font-size: var(--fs-chrome);
-  line-height: var(--lh-tight);
-  margin: var(--s-2) 0 var(--s-6);
-  animation: knowledge-panel-fade var(--t-3) var(--ease-out);
-}
-
-.knowledge-test-result.is-ok {
-  background: color-mix(in srgb, var(--mint) 10%, transparent);
-  border: 0;
-  color: var(--mint);
-}
-
-.knowledge-test-result.is-err {
-  background: color-mix(in srgb, var(--coral) 10%, transparent);
-  border: 0;
-  color: var(--coral);
-}
 
 .knowledge-tab-panel .ui-field-row .ui-field-row-control {
   flex: 0 1 360px;
@@ -160,6 +136,25 @@
 .knowledge-tab-panel .ui-field-row .ui-field-row-control .piwin-select {
   width: 100%;
   min-width: 0;
+}
+
+.knowledge-model-picker {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.knowledge-model-picker-input {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.knowledge-model-picker-input .piwin-text-input {
+  flex: 1;
+}
+
+.knowledge-model-picker-input button {
+  flex-shrink: 0;
 }
 
 .knowledge-field-advanced {
@@ -196,4 +191,3 @@ html[data-theme-visual-style='ink-wash'] .knowledge-tab-panel {
   background: rgba(22, 24, 29, 0.9) !important;
   border-color: rgba(214, 205, 190, 0.1) !important;
 }
-

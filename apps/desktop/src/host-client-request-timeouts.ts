@@ -65,6 +65,9 @@ export function getHostRequestTimeoutMs(
       return remote ? REMOTE_HOST_REQUEST_STATUS_TIMEOUT_MS : HOST_REQUEST_STATUS_TIMEOUT_MS;
     case 'models/discover':
     case 'models/test':
+    // A knowledge probe is one live round trip to a user-typed endpoint.
+    case 'knowledge/test-connection':
+    case 'knowledge/embedding-models/discover':
     case 'voice/live/start':
     case 'speech/transcribe':
     case 'mcp/start':

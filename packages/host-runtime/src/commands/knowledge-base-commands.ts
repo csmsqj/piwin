@@ -4,7 +4,7 @@
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 import type { HostCommand, HostResponse, KnowledgeCitation } from '@piwin/contracts';
-import { formatError, parseKnowledgeBaseId } from '@piwin/contracts';
+import { formatError, isRedactedStoredSecret, parseKnowledgeBaseId } from '@piwin/contracts';
 import { isPathConfined, isSafeRelativePath } from '@piwin/doc-rag';
 import { getSessionRecord, upsertSessionRecord } from '@piwin/session';
 import { fail, ok } from '../response-helpers.js';
@@ -26,6 +26,10 @@ import { searchKnowledgeBases } from '../knowledge-retriever.js';
 import { KnowledgePathEscapeError, readConfinedLineWindow } from '../knowledge-tools.js';
 import { getWikiOverview, readWikiConcept } from '../wiki-service.js';
 import { distillWikiConcept, WikiDistillError } from '../wiki-distill.js';
+import { testKnowledgeConnection } from '../knowledge-connection-test.js';
+import { resolveKnowledgeHttpApiKey } from '../notes-embedding-secret.js';
+import { createSecretResolver, type SecretResolver } from '../secret-resolver.js';
+import { discoverProviderModels } from '../provider-model-discovery.js';
 
 const TYPES = new Set<HostCommand['type']>([
   'knowledge/bases/list',
@@ -38,6 +42,8 @@ const TYPES = new Set<HostCommand['type']>([
   'knowledge/wiki/overview',
   'knowledge/wiki/concept',
   'knowledge/wiki/distill',
+  'knowledge/test-connection',
+  'knowledge/embedding-models/discover',
 ]);
 
 export function isKnowledgeBaseCommand(command: HostCommand): boolean {
@@ -181,6 +187,12 @@ export async function handleKnowledgeBaseCommand(
         await publishKnowledgeBasesChanged(context);
         return ok(requestId, command.type, result);
       }
+      case 'knowledge/test-connection': {
+        return await testKnowledgeConnectionCommand(command, requestId, context);
+      }
+      case 'knowledge/embedding-models/discover': {
+        return await discoverKnowledgeEmbeddingModels(command, requestId, context);
+      }
       default:
         return null;
     }
@@ -194,6 +206,104 @@ export async function handleKnowledgeBaseCommand(
     }
     throw error;
   }
+}
+
+/**
+ * Connectivity probe for one knowledge endpoint. The endpoint itself is the
+ * caller's draft (the button exists to test before saving), so `baseUrl` and
+ * `model` always come from the command.
+ *
+ * Credentials keep the Host-owned rule: a one-shot `apiKey` typed in the form
+ * wins, otherwise `apiKeyRef` / `apiKeyEnv` are resolved here so a stored key
+ * never has to be pulled back into the renderer.
+ */
+async function testKnowledgeConnectionCommand(
+  command: Extract<HostCommand, { type: 'knowledge/test-connection' }>,
+  requestId: string | undefined,
+  context: KnowledgeCommandContext,
+): Promise<HostResponse> {
+  try {
+    const oneShotApiKey = command.apiKey?.trim();
+    const auth = oneShotApiKey ? {} : await resolveKnowledgeConnectionAuth(command, context);
+    const apiKey =
+      oneShotApiKey && oneShotApiKey.length > 0
+        ? oneShotApiKey
+        : await resolveKnowledgeHttpApiKey(auth, knowledgeSecretResolver(context));
+
+    const result = await testKnowledgeConnection({
+      kind: command.kind,
+      baseUrl: command.baseUrl,
+      ...(command.provider !== undefined ? { provider: command.provider } : {}),
+      ...(command.model !== undefined ? { model: command.model } : {}),
+      ...(apiKey ? { apiKey } : {}),
+    });
+    return ok(requestId, command.type, result);
+  } catch (error) {
+    return fail(requestId, command.type, formatError(error));
+  }
+}
+
+async function discoverKnowledgeEmbeddingModels(
+  command: Extract<HostCommand, { type: 'knowledge/embedding-models/discover' }>,
+  requestId: string | undefined,
+  context: KnowledgeCommandContext,
+): Promise<HostResponse> {
+  try {
+    const oneShotApiKey = command.apiKey?.trim();
+    const auth = oneShotApiKey ? {} : await resolveKnowledgeConnectionAuth(command, context);
+    const secretResolver = knowledgeSecretResolver(context);
+    const result = await discoverProviderModels(
+      {
+        id: 'notes-embedding',
+        name: 'Knowledge embedding',
+        protocol: 'openai-compatible',
+        baseUrl: command.baseUrl,
+        models: [],
+      },
+      {
+        resolveSecret: async () =>
+          oneShotApiKey || (await resolveKnowledgeHttpApiKey(auth, secretResolver)) || null,
+      },
+    );
+    return ok(requestId, command.type, result);
+  } catch (error) {
+    return fail(requestId, command.type, formatError(error));
+  }
+}
+
+/** Remote settings hide secret refs; recover only placeholders from Host config. */
+async function resolveKnowledgeConnectionAuth(
+  command: {
+    apiKeyRef?: string;
+    apiKeyEnv?: string;
+    kind?: string;
+  },
+  context: KnowledgeCommandContext,
+): Promise<{ apiKeyRef?: string; apiKeyEnv?: string }> {
+  let apiKeyRef = command.apiKeyRef;
+  let apiKeyEnv = command.apiKeyEnv;
+  if (
+    (command.kind === undefined || command.kind === 'embedding') &&
+    (isRedactedStoredSecret(apiKeyRef) || isRedactedStoredSecret(apiKeyEnv))
+  ) {
+    const config = await context.loadConfig();
+    const saved = config.notes?.embedding ?? config.knowledge?.embedding;
+    if (isRedactedStoredSecret(apiKeyRef)) apiKeyRef = saved?.apiKeyRef;
+    if (isRedactedStoredSecret(apiKeyEnv)) apiKeyEnv = saved?.apiKeyEnv;
+  }
+  return {
+    ...(apiKeyRef && !isRedactedStoredSecret(apiKeyRef) ? { apiKeyRef } : {}),
+    ...(apiKeyEnv && !isRedactedStoredSecret(apiKeyEnv) ? { apiKeyEnv } : {}),
+  };
+}
+
+/** The Host owns the stored key; a test may inject a file-store-only resolver. */
+function knowledgeSecretResolver(
+  context: KnowledgeCommandContext,
+): Pick<SecretResolver, 'readSecretByRef'> {
+  return (
+    context.secretResolver ?? createSecretResolver({ piwinRoot: getPiwinRoot(context.piwinRoot) })
+  );
 }
 
 function uniqueBaseIds(baseIds: readonly string[]): string[] {
@@ -294,5 +404,3 @@ function openLocalPath(absolutePath: string): boolean {
     .unref();
   return true;
 }
-
-

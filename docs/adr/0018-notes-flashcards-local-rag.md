@@ -234,6 +234,19 @@ with source attribution (`sourceFolder`, `sourceFile`, `sourceLine`,
 - The product identity widens further: "agent shell with a personal
   knowledge layer" now includes arbitrary document folders, not just notes.
 
+## Settings connection controls (2026-09-27)
+
+The Knowledge embedding settings use Host commands for endpoint work:
+`knowledge/embedding-models/discover` lists model IDs from the draft Base URL,
+and `knowledge/test-connection` probes the selected model. Neither command
+writes configuration. A newly typed API key is sent for that request only;
+otherwise the Host resolves its stored key or environment variable. Remote
+settings redact the credential reference, so these commands recover the saved
+embedding credential from Host configuration when they receive that marker.
+Desktop can reveal an existing key through the explicit `secrets/get` action;
+simply viewing it does not modify settings. Saving still writes the key to the
+Host secret store and persists only its reference.
+
 ## Appendix: LanceDB for Doc Cards V2 (2026-08-16)
 
 **Decision:** A

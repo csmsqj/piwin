@@ -71,12 +71,24 @@ describe('knowledge base IPC shapes', () => {
       baseIds: [NOTES_KNOWLEDGE_BASE_ID],
     };
     const open: HostCommand = { type: 'knowledge/open-source', citation, openFile: true };
+    const probe: HostCommand = {
+      type: 'knowledge/test-connection',
+      kind: 'embedding',
+      baseUrl: 'https://api.openai.com/v1',
+      model: 'text-embedding-3-small',
+    };
+    const discover: HostCommand = {
+      type: 'knowledge/embedding-models/discover',
+      baseUrl: 'https://api.openai.com/v1',
+    };
     const push: HostPush = { type: 'knowledge/bases-changed', bases: [] };
-    expect([list.type, search.type, mount.type, open.type, push.type]).toEqual([
+    expect([list.type, search.type, mount.type, open.type, probe.type, discover.type, push.type]).toEqual([
       'knowledge/bases/list',
       'knowledge/search',
       'session/set-knowledge-bases',
       'knowledge/open-source',
+      'knowledge/test-connection',
+      'knowledge/embedding-models/discover',
       'knowledge/bases-changed',
     ]);
   });

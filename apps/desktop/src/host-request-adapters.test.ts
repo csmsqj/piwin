@@ -109,3 +109,32 @@ describe('createHostRequestAdapters archive delete', () => {
     expect(sent[0]?.key?.length).toBeGreaterThan(0);
   });
 });
+
+describe('createHostRequestAdapters knowledge model discovery', () => {
+  it('forwards the live embedding endpoint and one-shot key to the Host', async () => {
+    const sent: HostCommand[] = [];
+    const fake = {
+      request: async (command: HostCommand) => {
+        sent.push(command);
+        return { type: 'response', command: command.type, success: true } satisfies HostResponse;
+      },
+    } as unknown as HostClient;
+    const adapters = createHostRequestAdapters(fake);
+
+    await adapters.requestConfig({
+      type: 'knowledge/embedding-models/discover',
+      knowledgeDiscover: {
+        baseUrl: 'https://api.example.com/v1',
+        apiKeyRef: '[stored-secret]',
+        apiKey: 'fresh-key',
+      },
+    });
+
+    expect(sent).toEqual([{
+      type: 'knowledge/embedding-models/discover',
+      baseUrl: 'https://api.example.com/v1',
+      apiKeyRef: '[stored-secret]',
+      apiKey: 'fresh-key',
+    }]);
+  });
+});

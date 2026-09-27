@@ -10,6 +10,17 @@ import { SettingsProvider, type SettingsContextValue } from '../settings-context
 import { webToDraft } from '../web-draft.js';
 import { KnowledgePage } from './knowledge-page.js';
 
+const notifications = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+}));
+
+vi.mock('@piwin/ui-kit', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@piwin/ui-kit')>()),
+  showSuccessNotification: notifications.success,
+  showErrorNotification: notifications.error,
+}));
+
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean | undefined;
 }
@@ -122,6 +133,8 @@ describe('KnowledgePage settings', () => {
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
+    notifications.success.mockReset();
+    notifications.error.mockReset();
   });
 
   afterEach(() => {
@@ -204,6 +217,129 @@ describe('KnowledgePage settings', () => {
     });
   });
 
+  it('fetches endpoint models and lets the user select an embedding model', async () => {
+    const context = createContextValue({
+      ...baseConfig(),
+      notes: {
+        embedding: {
+          provider: 'openai-compatible',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'text-embedding-3-small',
+          apiKeyRef: 'keychain:piwin-notes-embedding',
+        },
+      },
+    });
+    const request = context.request as ReturnType<typeof vi.fn>;
+    request.mockResolvedValue({
+      type: 'response',
+      command: 'knowledge/embedding-models/discover',
+      success: true,
+      data: {
+        providerId: 'notes-embedding',
+        protocol: 'openai-compatible',
+        models: [{ id: 'text-embedding-3-small' }, { id: 'custom-embedding-v2' }],
+      },
+    });
+
+    act(() => {
+      root!.render(
+        <PiwinUiProvider manifest={PIWIN_APPEARANCE_DARK}>
+          <DesktopLocaleProvider locale="en" onLocaleChange={() => {}}>
+            <SettingsProvider value={context}><KnowledgePage /></SettingsProvider>
+          </DesktopLocaleProvider>
+        </PiwinUiProvider>,
+      );
+    });
+
+    await act(async () => {
+      container!.querySelector<HTMLButtonElement>('[data-testid="knowledge-embedding-discover"]')!.click();
+    });
+    expect(request).toHaveBeenCalledWith({
+      type: 'knowledge/embedding-models/discover',
+      knowledgeDiscover: {
+        baseUrl: 'https://api.openai.com/v1',
+        apiKeyRef: 'keychain:piwin-notes-embedding',
+      },
+    });
+    const modelSelect = container!.querySelector<HTMLSelectElement>(
+      '[data-testid="knowledge-embedding-discovered-models"] select, [data-testid="knowledge-embedding-discovered-models"]',
+    );
+    expect(modelSelect?.options.length).toBe(3);
+    act(() => {
+      modelSelect!.value = 'custom-embedding-v2';
+      modelSelect!.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    const modelInput = container!.querySelector<HTMLInputElement>(
+      '[data-testid="knowledge-embedding-model"] input, [data-testid="knowledge-embedding-model"]',
+    );
+    expect(modelInput?.value).toBe('custom-embedding-v2');
+
+    const keyInput = container!.querySelector<HTMLInputElement>(
+      '[data-testid="knowledge-embedding-api-key"] input, [data-testid="knowledge-embedding-api-key"]',
+    );
+    act(() => { setInputValue(keyInput, 'sk-new-key'); });
+    await act(async () => {
+      container!.querySelector<HTMLButtonElement>('[data-testid="knowledge-embedding-discover"]')!.click();
+    });
+    expect(request).toHaveBeenLastCalledWith({
+      type: 'knowledge/embedding-models/discover',
+      knowledgeDiscover: {
+        baseUrl: 'https://api.openai.com/v1',
+        apiKeyRef: 'keychain:piwin-notes-embedding',
+        apiKey: 'sk-new-key',
+      },
+    });
+  });
+
+  it('reveals a stored key on demand without treating it as an edit', async () => {
+    const context = createContextValue({
+      ...baseConfig(),
+      notes: {
+        embedding: {
+          provider: 'openai-compatible',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'text-embedding-3-small',
+          apiKeyRef: 'keychain:piwin-notes-embedding',
+        },
+      },
+    });
+    const load = context.loadProviderSecret as ReturnType<typeof vi.fn>;
+    load.mockResolvedValue('sk-saved-key');
+
+    act(() => {
+      root!.render(
+        <PiwinUiProvider manifest={PIWIN_APPEARANCE_DARK}>
+          <DesktopLocaleProvider locale="en" onLocaleChange={() => {}}>
+            <SettingsProvider value={context}><KnowledgePage /></SettingsProvider>
+          </DesktopLocaleProvider>
+        </PiwinUiProvider>,
+      );
+    });
+
+    const keyInput = container!.querySelector<HTMLInputElement>(
+      '[data-testid="knowledge-embedding-api-key"] input, [data-testid="knowledge-embedding-api-key"]',
+    );
+    const toggle = container!.querySelector<HTMLButtonElement>(
+      '[data-testid="knowledge-embedding-toggle-key"]',
+    );
+    const save = container!.querySelector<HTMLButtonElement>(
+      '[data-testid="knowledge-embedding-save"]',
+    );
+    expect(load).not.toHaveBeenCalled();
+    expect(keyInput?.type).toBe('password');
+    expect(save?.disabled).toBe(true);
+
+    await act(async () => { toggle!.click(); });
+    expect(load).toHaveBeenCalledWith('notes-embedding');
+    expect(keyInput?.type).toBe('text');
+    expect(keyInput?.value).toBe('sk-saved-key');
+    expect(save?.disabled).toBe(true);
+
+    act(() => { toggle!.click(); });
+    expect(keyInput?.type).toBe('password');
+    expect(keyInput?.value).toBe('');
+  });
+
   it('renders test connection button in enabled embedding tab', async () => {
     const configWithEmbedding: PiwinConfig = {
       ...baseConfig(),
@@ -235,6 +371,106 @@ describe('KnowledgePage settings', () => {
     );
     expect(testBtn).not.toBeNull();
     expect(testBtn?.textContent).toContain('测试连接');
+  });
+
+  it('probes the embedding endpoint on the Host instead of fetching from the WebView', async () => {
+    // Regression: the WebView CSP pins `connect-src` to `'self'`/`ipc:`, so a
+    // renderer-side fetch to the endpoint was blocked and "Test connection"
+    // always failed. The probe now runs on the Host.
+    const configWithStoredKey: PiwinConfig = {
+      ...baseConfig(),
+      notes: {
+        embedding: {
+          provider: 'openai-compatible',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'text-embedding-3-small',
+          apiKeyRef: 'keychain:notes-embedding-123',
+        },
+      },
+    };
+    const context = createContextValue(configWithStoredKey);
+    const requestMock = context.request as unknown as ReturnType<typeof vi.fn>;
+    requestMock.mockResolvedValue({
+      type: 'response',
+      command: 'knowledge/test-connection',
+      success: true,
+      data: { durationMs: 12, dimension: 1536 },
+    });
+
+    act(() => {
+      root!.render(
+        <PiwinUiProvider manifest={PIWIN_APPEARANCE_DARK}>
+          <DesktopLocaleProvider locale="en" onLocaleChange={() => {}}>
+            <SettingsProvider value={context}>
+              <KnowledgePage />
+            </SettingsProvider>
+          </DesktopLocaleProvider>
+        </PiwinUiProvider>,
+      );
+    });
+
+    const testBtn = container!.querySelector<HTMLButtonElement>(
+      '[data-testid="knowledge-embedding-test-btn"]',
+    );
+    expect(testBtn).not.toBeNull();
+    await act(async () => {
+      testBtn!.click();
+    });
+
+    expect(requestMock).toHaveBeenCalledWith({
+      type: 'knowledge/test-connection',
+      knowledgeTest: {
+        kind: 'embedding',
+        provider: 'openai-compatible',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'text-embedding-3-small',
+        apiKeyRef: 'keychain:notes-embedding-123',
+      },
+    });
+    // The stored key is resolved on the Host; it never travels back here.
+    expect(context.loadProviderSecret).not.toHaveBeenCalled();
+    expect(notifications.success).toHaveBeenCalledWith('Connected · 12ms · dim: 1536');
+    expect(container!.querySelector('.knowledge-test-result')).toBeNull();
+  });
+
+  it('shows an error toast when the probe fails and renders no inline banner', async () => {
+    const configWithStoredKey: PiwinConfig = {
+      ...baseConfig(),
+      notes: {
+        embedding: {
+          provider: 'openai-compatible',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'text-embedding-3-small',
+          apiKeyRef: 'keychain:notes-embedding-123',
+        },
+      },
+    };
+    const context = createContextValue(configWithStoredKey);
+    const requestMock = context.request as unknown as ReturnType<typeof vi.fn>;
+    requestMock.mockRejectedValue(new Error('Unauthorized (401)'));
+
+    act(() => {
+      root!.render(
+        <PiwinUiProvider manifest={PIWIN_APPEARANCE_DARK}>
+          <DesktopLocaleProvider locale="en" onLocaleChange={() => {}}>
+            <SettingsProvider value={context}>
+              <KnowledgePage />
+            </SettingsProvider>
+          </DesktopLocaleProvider>
+        </PiwinUiProvider>,
+      );
+    });
+
+    const testBtn = container!.querySelector<HTMLButtonElement>(
+      '[data-testid="knowledge-embedding-test-btn"]',
+    );
+    expect(testBtn).not.toBeNull();
+    await act(async () => {
+      testBtn!.click();
+    });
+
+    expect(notifications.error).toHaveBeenCalledWith('Connection failed: Unauthorized (401)');
+    expect(container!.querySelector('.knowledge-test-result')).toBeNull();
   });
 
   it('shows MinerU Base URL and API key after the parser is enabled', async () => {

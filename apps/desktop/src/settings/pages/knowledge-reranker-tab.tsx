@@ -8,8 +8,6 @@ import {
   TextInput,
 } from '@piwin/ui-kit';
 import {
-  IconAlertCircle,
-  IconCheckCircle,
   IconRefresh,
   IconSpark,
 } from '../../shell-icons.js';
@@ -20,7 +18,6 @@ import {
   DEFAULT_RERANKER_URL,
   type KnowledgeExtrasDraft,
 } from '../knowledge-extras-draft.js';
-import type { TestStatus } from './knowledge-embedding-tab.js';
 
 export type KnowledgeRerankerTabProps = {
   active: boolean;
@@ -28,7 +25,6 @@ export type KnowledgeRerankerTabProps = {
   patchExtras: (partial: Partial<KnowledgeExtrasDraft>) => void;
   onTest: () => void;
   testing: boolean;
-  testStatus: TestStatus | null;
   saving: boolean;
   readOnly: boolean;
   isZh: boolean;
@@ -76,20 +72,6 @@ export function KnowledgeRerankerTab(props: KnowledgeRerankerTabProps): ReactEle
           </button>
         ) : null}
       </div>
-
-      {props.testStatus ? (
-        <div
-          className={`knowledge-test-result is-${props.testStatus.tone}`}
-          data-testid="knowledge-reranker-test-result"
-        >
-          {props.testStatus.tone === 'ok' ? (
-            <IconCheckCircle width={14} height={14} />
-          ) : (
-            <IconAlertCircle width={14} height={14} />
-          )}
-          <span>{props.testStatus.message}</span>
-        </div>
-      ) : null}
 
       <FieldRow
         label={isZh ? '启用精准重排' : 'Enable reranker'}

@@ -50,6 +50,8 @@ export type SettingsConfigRequest = (command: {
     | 'secrets/get'
     | 'web/test-search-source'
     | 'code-search/test-windsurf'
+    | 'knowledge/test-connection'
+    | 'knowledge/embedding-models/discover'
     | 'web/search-route-preview'
     | 'web/search-log-list'
     | 'web/search-log-clear'
@@ -116,6 +118,13 @@ export type SettingsConfigRequest = (command: {
     | import('@piwin/contracts').VisionDelegateInput
     | SearchRoutePreviewInput;
   webTest?: import('@piwin/contracts').WebSearchTestInput;
+  /**
+   * knowledge/test-connection: the live endpoint draft. The probe runs on the
+   * Host — the WebView CSP blocks external `connect-src`, so a renderer-side
+   * fetch to an embedding / reranker base URL never leaves the app.
+   */
+  knowledgeTest?: Omit<import('@piwin/contracts').KnowledgeConnectionTestCommand, 'id' | 'type'>;
+  knowledgeDiscover?: Omit<import('@piwin/contracts').KnowledgeEmbeddingModelsDiscoverCommand, 'id' | 'type'>;
   /** web/search-log-list: all calls or only (partially) failed ones. */
   logStatus?: import('@piwin/contracts').WebSearchLogStatusFilter;
 }) => Promise<HostResponse>;
