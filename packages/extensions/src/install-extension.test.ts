@@ -115,4 +115,20 @@ describe('installExtension git errors', () => {
     expect(result.source).toMatchObject({ kind: 'git', subdir: 'extensions' });
     expect(await readFile(join(result.targetPath, 'index.ts'), 'utf8')).toContain('export default');
   });
+
+  it('checks out the exact pinned commit even after the branch advances', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'piwin-ext-gitpin-'));
+    const repo = await makeGitRepo({ 'index.ts': 'export default function oldVersion() {}\n' });
+    const { stdout } = await run('git', ['rev-parse', 'HEAD'], { cwd: repo });
+    const pinnedCommit = stdout.trim();
+    await writeFile(join(repo, 'index.ts'), 'export default function newVersion() {}\n');
+    await run('git', ['add', '.'], { cwd: repo });
+    await run('git', ['commit', '-q', '-m', 'advance'], { cwd: repo });
+
+    const result = await installExtension({
+      piwinRoot: root,
+      source: { kind: 'git', url: repo, ref: pinnedCommit },
+    });
+    expect(await readFile(join(result.targetPath, 'index.ts'), 'utf8')).toContain('oldVersion');
+  });
 });

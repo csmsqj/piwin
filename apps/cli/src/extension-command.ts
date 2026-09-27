@@ -7,6 +7,7 @@ import {
   loadPiwinConfig,
 } from '@piwin/host-runtime';
 import { resolve } from 'node:path';
+import { fetchExtensionRegistryIndex } from '@piwin/marketplace';
 import { parseProject, readOption } from './cli-args.js';
 
 /**
@@ -58,6 +59,7 @@ export async function commandExtension(argv: string[]): Promise<void> {
     const name = readOption(argv, '--name');
     const subdir = readOption(argv, '--subdir');
     const ref = readOption(argv, '--ref');
+    const registryId = readOption(argv, '--registry');
     if (localPath) {
       const installOptions: Parameters<typeof installExtension>[0] = {
         piwinRoot: root,
@@ -85,8 +87,24 @@ export async function commandExtension(argv: string[]): Promise<void> {
       console.log(`installed extension ${result.extensionId} -> ${result.targetPath}`);
       return;
     }
+    if (registryId) {
+      const entry = (await fetchExtensionRegistryIndex()).find(
+        (candidate) => candidate.entryId === `extension:${registryId}`,
+      );
+      if (!entry || entry.install.kind !== 'managed-extension') {
+        throw new Error(`Unknown piwin extension registry entry: ${registryId}`);
+      }
+      const result = await installExtension({
+        piwinRoot: root,
+        source: entry.install.source,
+        name: entry.install.name ?? entry.capabilityId,
+      });
+      console.log(EXTENSION_COMPAT_NOTE);
+      console.log(`installed extension ${result.extensionId} -> ${result.targetPath}`);
+      return;
+    }
     console.error(
-      'Usage: piwin extension install --local <file|dir> | --git <url> [--subdir <path>] [--ref <branch|tag>] [--name <id>]',
+      'Usage: piwin extension install --local <file|dir> | --git <url> [--subdir <path>] [--ref <branch|tag|commit>] [--name <id>] | --registry <owner/name>',
     );
     process.exitCode = 1;
     return;

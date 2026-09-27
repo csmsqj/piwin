@@ -144,7 +144,8 @@ export function MarketplaceWorkspaceView(props: MarketplaceWorkspaceViewProps): 
       data.entries
         .filter(
           (entry) =>
-            (kindFilter === 'all' || entry.kind === kindFilter) &&
+            (kindFilter === 'all' || entry.kind === kindFilter ||
+              (kindFilter === 'piwin-extension' && entry.sourceLabel === 'piwin-extensions')) &&
             matchesQuery(
               [
                 entry.name.en,
@@ -193,10 +194,12 @@ export function MarketplaceWorkspaceView(props: MarketplaceWorkspaceViewProps): 
     () =>
       data.items.filter(
         (item) =>
-          (kindFilter === 'all' || item.kind === kindFilter) &&
+          (kindFilter === 'all' || item.kind === kindFilter ||
+            (kindFilter === 'piwin-extension' && data.entries.some((entry) =>
+              entry.entryId === item.catalogEntryId && entry.sourceLabel === 'piwin-extensions'))) &&
           matchesQuery([item.name, item.capabilityId, item.description], query),
       ),
-    [data.items, kindFilter, query],
+    [data.entries, data.items, kindFilter, query],
   );
 
   const openEntry: MarketplaceCatalogEntry | null =
@@ -230,7 +233,7 @@ export function MarketplaceWorkspaceView(props: MarketplaceWorkspaceViewProps): 
 
   const showEcosystem = !query || ecosystem.searchedQuery.toLowerCase() === query;
   const hasSearchedEcosystem =
-    (kindFilter === 'all' || kindFilter === 'extension' || Boolean(query)) &&
+    (kindFilter === 'all' || kindFilter === 'extension') &&
     showEcosystem &&
     Boolean(
       ecosystem.searchedQuery || ecosystem.loading || ecosystem.hits.length > 0 || ecosystem.error,
@@ -249,34 +252,6 @@ export function MarketplaceWorkspaceView(props: MarketplaceWorkspaceViewProps): 
       />
       {!query && kindFilter !== 'piwin-extension' ? (
         <MarketplaceHeroCarousel locale={props.locale} />
-      ) : null}
-      {kindFilter === 'piwin-extension' ? (
-        <section className="market-category-section" data-testid="marketplace-piwin-extensions">
-          <header className="market-section-header">
-            <div className="market-ecosystem-title-row">
-              <h2 className="market-ecosystem-title">
-                {t('piwin Extensions (Upcoming)', 'piwin 原生扩展（待上架）')}
-              </h2>
-              <span className="market-section-caption">
-                {t(
-                  'Deeply integrated native capabilities under active testing, coming soon.',
-                  '深度集成的原生专属能力正在研发测试中，即将推出。',
-                )}
-              </span>
-            </div>
-          </header>
-          <EmptyState
-            visual={<IconExtension width={28} height={28} aria-hidden="true" />}
-            seal="砚"
-            title={t('Official native extensions coming soon', '官方原生扩展即将推出')}
-            description={t(
-              'Deeply integrated session branching, local knowledge graph, and workflow tools are in active development.',
-              '多会话分支协同、本地知识图谱增强与自动化工作流等专属能力正在研发验证中，无需额外适配即可无缝运行。',
-            )}
-            size="spacious"
-            testId="marketplace-piwin-extension-empty"
-          />
-        </section>
       ) : null}
       {showFeaturedSection ? (
         <section className="market-category-section" data-testid="marketplace-featured">
@@ -356,7 +331,6 @@ export function MarketplaceWorkspaceView(props: MarketplaceWorkspaceViewProps): 
         </section>
       ) : null}
       {!data.loading &&
-      kindFilter !== 'piwin-extension' &&
       visibleEntries.length === 0 &&
       !(hasSearchedEcosystem && (ecosystem.loading || ecosystem.hits.length > 0)) ? (
         <EmptyState

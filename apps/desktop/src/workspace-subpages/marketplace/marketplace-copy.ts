@@ -28,7 +28,7 @@ export function localizedText(
 
 const KIND_LABELS: Record<MarketplaceCapabilityKind | 'piwin-extension', Pair> = {
   extension: ['extension', 'extension'],
-  'piwin-extension': ['piwin-extension (upcoming)', 'piwin-extension（待上架）'],
+  'piwin-extension': ['piwin extensions', 'piwin 扩展'],
   skill: ['skill', 'skill'],
   mcp: ['mcp', 'mcp'],
 };

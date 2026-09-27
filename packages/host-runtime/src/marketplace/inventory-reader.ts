@@ -11,7 +11,7 @@ import type {
 } from '@piwin/contracts';
 import { formatError } from '@piwin/contracts';
 import { createExtensionRevisionStore } from '@piwin/extensions';
-import { matchCatalogEntry } from '@piwin/marketplace';
+import { listMarketplaceWithExtensions, matchCatalogEntry } from '@piwin/marketplace';
 import { loadMcpConfig } from '@piwin/mcp';
 import { getSessionRecord } from '@piwin/session';
 import { loadCatalogResources } from '../commands/catalog-resources.js';
@@ -40,11 +40,12 @@ export async function readMarketplaceInventory(
 ): Promise<MarketplaceInstalledListData> {
   const rootDir = getPiwinRoot(context.piwinRoot);
   const store = createExtensionRevisionStore(rootDir);
-  const [resources, managedRecords, mcpConfig, mcpHealth] = await Promise.all([
+  const [resources, managedRecords, mcpConfig, mcpHealth, catalog] = await Promise.all([
     loadCatalogResources(rootDir, options.projectPath),
     store.listRecords(),
     loadMcpConfig(rootDir),
     context.getMcpManager().listHealth(),
+    listMarketplaceWithExtensions(),
   ]);
   let session: InventorySessionView | undefined;
   if (options.sessionId) {
@@ -67,7 +68,7 @@ export async function readMarketplaceInventory(
     mcpServers: mcpConfig.mcpServers,
     mcpHealth,
     ...(session ? { session } : {}),
-    matchCatalogEntry: (kind, capabilityId) => matchCatalogEntry(kind, capabilityId),
+    matchCatalogEntry: (kind, capabilityId) => matchCatalogEntry(kind, capabilityId, catalog),
   });
 }
 
@@ -76,13 +77,14 @@ export async function readMarketplaceInventory(
  * health, no session view) so agent tools can mark search results.
  */
 export async function readInstalledCatalogEntryIds(piwinRoot: string): Promise<Set<string>> {
-  const [resources, mcpConfig] = await Promise.all([
+  const [resources, mcpConfig, catalog] = await Promise.all([
     loadCatalogResources(piwinRoot),
     loadMcpConfig(piwinRoot),
+    listMarketplaceWithExtensions(),
   ]);
   const installed = new Set<string>();
   const mark = (kind: MarketplaceCapabilityKind, capabilityId: string): void => {
-    const entry = matchCatalogEntry(kind, capabilityId);
+    const entry = matchCatalogEntry(kind, capabilityId, catalog);
     if (entry) installed.add(entry.entryId);
   };
   for (const extension of resources.extensions) mark('extension', extension.id);

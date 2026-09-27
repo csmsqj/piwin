@@ -21,6 +21,12 @@ export { piGitInstallCommand, searchPiGithubRepos } from './search-pi-github.js'
 export type { SearchPiGithubOptions } from './search-pi-github.js';
 export { searchMarketplaceSources } from './search-marketplace.js';
 export type { SearchMarketplaceOptions } from './search-marketplace.js';
+export {
+  DEFAULT_EXTENSION_REGISTRY_URL,
+  fetchExtensionRegistryIndex,
+  listMarketplaceWithExtensions,
+  parseExtensionRegistryIndex,
+} from './extension-registry-index.js';
 
 export {
   listStaticMcpRegistry,
@@ -41,7 +47,11 @@ export {
   resolveSecretText,
   extractSecretPlaceholders,
 } from './plugin/secret-env.js';
-export { FEATURED_PLUGINS, findFeaturedPlugin } from './plugin/featured-catalog.js';
+export {
+  FEATURED_PLUGINS,
+  findFeaturedPlugin,
+  listBundledPluginSummaries,
+} from './plugin/featured-catalog.js';
 export type { FeaturedPluginCategory, FeaturedPluginEntry, FeaturedPluginGitSource } from './plugin/featured-catalog.js';
 export {
   loadInstalledPlugins,

@@ -192,6 +192,27 @@ describe('MarketplaceWorkspaceView', () => {
     expect(container.textContent).not.toContain('Runtime Gen');
   });
 
+  it('shows only registry entries in the piwin extension filter', async () => {
+    const registryEntry: MarketplaceCatalogEntry = {
+      ...EXTENSION_ENTRY,
+      entryId: 'extension:mimimaster/commandcode-provider',
+      capabilityId: 'piwin-mimimaster-commandcode-provider',
+      name: { en: 'Command Code', zhCN: 'Command Code' },
+      sourceLabel: 'piwin-extensions',
+    };
+    const host = createFakeHost({
+      'marketplace/catalog-list': (command) => ok(command.type, {
+        entries: [EXTENSION_ENTRY, SKILL_ENTRY, registryEntry],
+      }),
+    });
+    render(host);
+    await flush();
+    act(() => { findButton(container, 'piwin 扩展')?.click(); });
+    expect(Array.from(container.querySelectorAll('[data-testid^="market-entry-"]')).map(
+      (node) => node.getAttribute('data-testid'),
+    )).toEqual(['market-entry-extension:mimimaster/commandcode-provider']);
+  });
+
   it('shows a small real community preview on opening Discover', async () => {
     const host = createFakeHost({
       'marketplace/search': (command) =>
@@ -706,4 +727,3 @@ describe('MarketplaceWorkspaceView', () => {
     expect(catalogCards?.[0]?.textContent).toContain('skill-creator');
   });
 });
-

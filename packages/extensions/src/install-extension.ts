@@ -68,16 +68,27 @@ async function installExtensionFromGit(
   },
 ): Promise<InstallExtensionResult> {
   const clonePath = await mkdtemp(`${tmpdir()}/piwin-extension-git-`);
+  const pinnedCommit = options.source.ref && /^[0-9a-f]{40}$/.test(options.source.ref)
+    ? options.source.ref : undefined;
   const args = ['clone', '--depth', '1'];
-  if (options.source.ref) {
-    args.push('--branch', options.source.ref);
-  }
+  if (options.source.ref && !pinnedCommit) args.push('--branch', options.source.ref);
   // `--` keeps a URL that begins with `-` from being read as a git option.
   args.push('--', options.source.url, clonePath);
   try {
     await execFileAsync('git', args, { timeout: 120_000 });
+    if (pinnedCommit) {
+      await execFileAsync('git', ['fetch', '--depth', '1', 'origin', pinnedCommit], {
+        cwd: clonePath, timeout: 120_000,
+      });
+      await execFileAsync('git', ['checkout', '--detach', 'FETCH_HEAD'], {
+        cwd: clonePath, timeout: 120_000,
+      });
+    }
     const contentRoot = resolve(clonePath, normalizeRepositorySubdir(options.source.subdir));
     const resolvedCommit = await readGitCommit(clonePath);
+    if (pinnedCommit && resolvedCommit !== pinnedCommit) {
+      throw new Error('Fetched extension commit does not match registry pin');
+    }
     const sourceLocator = `git:${options.source.url}@${resolvedCommit}`;
     const staged = await store.stage({
       sourcePath: contentRoot,

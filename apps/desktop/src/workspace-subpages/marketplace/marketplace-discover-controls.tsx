@@ -30,17 +30,6 @@ export function MarketplaceDiscoverControls(props: MarketplaceDiscoverControlsPr
 
   return (
     <div className="market-discover-controls">
-      {searching ? null : (
-        <header className="market-page-intro">
-          <p>
-            {t(
-              'Curated agent extensions, skills, and connected services for your private Host. Explore capabilities across piwin, npm, GitHub, and MCP registry.',
-              '拓展市场聚合 Agent 原生扩展、Skill 技能与 MCP 连接服务。支持 npm、GitHub 与 MCP Registry 多源检索与即装即用。',
-            )}
-          </p>
-        </header>
-      )}
-
       <div className="market-filter-row">
         <div
           className="market-category-strip"
@@ -52,18 +41,18 @@ export function MarketplaceDiscoverControls(props: MarketplaceDiscoverControlsPr
               kind === 'all'
                 ? props.entries.length
                 : kind === 'piwin-extension'
-                  ? 0
+                  ? props.entries.filter((entry) => entry.sourceLabel === 'piwin-extensions').length
                   : props.entries.filter((entry) => entry.kind === kind).length;
             return (
               <button
                 key={kind}
                 type="button"
-                className={`vault-chip${props.kindFilter === kind ? ' is-on' : ''}${kind === 'piwin-extension' ? ' is-pending' : ''}`}
+                className={`vault-chip${props.kindFilter === kind ? ' is-on' : ''}`}
                 aria-pressed={props.kindFilter === kind}
                 onClick={() => props.onKindFilterChange(kind)}
               >
                 {kind === 'all' ? t('All', '全部') : kindLabel(kind, props.locale)}{' '}
-                {searching || kind === 'piwin-extension' ? null : <span>{count}</span>}
+                {searching ? null : <span>{count}</span>}
               </button>
             );
           })}

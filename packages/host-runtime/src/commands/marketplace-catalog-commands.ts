@@ -6,7 +6,7 @@ import type {
   MarketplaceCatalogListData,
 } from '@piwin/contracts';
 import { formatError } from '@piwin/contracts';
-import { findCatalogEntry, listCatalogEntries } from '@piwin/marketplace';
+import { listMarketplaceWithExtensions } from '@piwin/marketplace';
 import { purgeUnreferencedExtensions, readMarketplaceInventory } from '../marketplace/inventory-reader.js';
 import { fail, ok } from '../response-helpers.js';
 import type { HostCommandContext } from './host-command-context.js';
@@ -28,7 +28,7 @@ export async function handleMarketplaceCatalogCommand(
   switch (command.type) {
     case 'marketplace/catalog-list': {
       const data: MarketplaceCatalogListData = {
-        entries: listCatalogEntries({
+        entries: await listMarketplaceWithExtensions({
           ...(command.query !== undefined ? { query: command.query } : {}),
           ...(command.kinds !== undefined ? { kinds: command.kinds } : {}),
           ...(command.category !== undefined ? { category: command.category } : {}),
@@ -40,7 +40,9 @@ export async function handleMarketplaceCatalogCommand(
       return ok(requestId, command.type, data);
     }
     case 'marketplace/catalog-get': {
-      const entry = findCatalogEntry(command.entryId);
+      const entry = (await listMarketplaceWithExtensions({ includeWithdrawn: true })).find(
+        (item) => item.entryId === command.entryId,
+      );
       if (!entry) {
         return fail(requestId, command.type, `Unknown marketplace entry: ${command.entryId}`);
       }

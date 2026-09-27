@@ -76,7 +76,7 @@ Usage:
   piwin skill ensure-bundled
   piwin extension list [--project <path>]
   piwin extension ensure-bundled
-  piwin extension install --local <file|dir> | --git <url> [--name <id>]
+  piwin extension install --local <file|dir> | --git <url> [--name <id>] | --registry <owner/name>
   piwin market search [query] [--type extension|skill|mcp]
   piwin market show <entry-id>
   piwin market installed [--session <id>] [--project <path>]

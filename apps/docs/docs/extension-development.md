@@ -306,3 +306,5 @@ piwin extension enable <id>                      # 启用
 ```bash
 piwin extension install --registry <你的用户名>/<扩展名>
 ```
+
+仓库索引由 Host 读取；桌面端「扩展市场 → piwin 扩展」会展示已上架条目。首个示例是 [Command Code for piwin](https://github.com/mimimaster/piwin-commandcode-provider/tree/main/piwin)：其 `piwin.json` 声明 `authProvider: "commandcode"`，启用后才会在 OAuth 设置中显示连接入口，授权后模型进入模型管理。当前这项 Host 授权桥接仅支持 Command Code；一般扩展无需也不能借此声明任意 OAuth 提供商。
