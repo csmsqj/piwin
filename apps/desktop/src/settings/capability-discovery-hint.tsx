@@ -6,12 +6,12 @@
 import type { ReactElement } from 'react';
 import { useDesktopLocale } from '../desktop-locale-context';
 
-export function CapabilityDiscoveryHint(props: { kind: 'skill' | 'mcp' | 'plugin' }): ReactElement {
+export function CapabilityDiscoveryHint(props: { kind: 'skill' | 'mcp' }): ReactElement {
   const { locale } = useDesktopLocale();
   const zh = locale === 'zh-CN';
   const what = zh
-    ? { skill: '技能', mcp: 'MCP 服务', plugin: '插件' }[props.kind]
-    : { skill: 'skills', mcp: 'MCP servers', plugin: 'plugins' }[props.kind];
+    ? { skill: '技能', mcp: 'MCP 服务' }[props.kind]
+    : { skill: 'skills', mcp: 'MCP servers' }[props.kind];
   return (
     <p className="muted capability-discovery-hint" data-testid={`capability-discovery-hint-${props.kind}`}>
       {zh

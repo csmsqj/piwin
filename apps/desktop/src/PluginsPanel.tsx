@@ -4,15 +4,15 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
+  BundledPluginSummary,
   HostResponse,
   InstalledPlugin,
   PluginInstallSource,
   PluginRegistryIndex,
 } from '@piwin/contracts';
-import { Notice, Spinner, TextInput } from '@piwin/ui-kit';
+import { Spinner, TextInput } from '@piwin/ui-kit';
 import { useDesktopLocale } from './desktop-locale-context';
 import { PageTitle } from './settings/page-title';
-import { CapabilityDiscoveryHint } from './settings/capability-discovery-hint';
 import { PluginYoursPane } from './plugin-yours-pane';
 
 export type PluginsPanelProps = {
@@ -30,6 +30,9 @@ export type PluginsPanelProps = {
   }) => Promise<HostResponse>;
   onClose?: () => void;
   variant?: 'inline' | 'modal';
+  /** Settings shell toast. Pages pass `setError` / `setInfo` from settings context. */
+  onError?: (message: string | null) => void;
+  onInfo?: (message: string | null) => void;
 };
 
 
@@ -37,10 +40,10 @@ export function PluginsPanel(props: PluginsPanelProps) {
   const { locale } = useDesktopLocale();
   const isChinese = locale === 'zh-CN';
   const [plugins, setPlugins] = useState<InstalledPlugin[]>([]);
+  const [bundled, setBundled] = useState<BundledPluginSummary[]>([]);
   const [registry, setRegistry] = useState<PluginRegistryIndex | null>(null);
+  const [registryLoading, setRegistryLoading] = useState(false);
   const [filter, setFilter] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [installKind, setInstallKind] = useState<'local' | 'git' | 'registry'>('local');
   const [installPath, setInstallPath] = useState('');
@@ -48,21 +51,28 @@ export function PluginsPanel(props: PluginsPanelProps) {
   const [installRegistryId, setInstallRegistryId] = useState('');
   const [installSecrets, setInstallSecrets] = useState('');
   const [installingId, setInstallingId] = useState<string | null>(null);
+  const [bundledSecrets, setBundledSecrets] = useState<Record<string, string>>({});
   const [installOpen, setInstallOpen] = useState(false);
   const [registryOpen, setRegistryOpen] = useState(false);
 
+  const reportError = props.onError;
+  const reportInfo = props.onInfo;
+
   const loadPlugins = useCallback(async () => {
     setLoading(true);
-    setError(null);
     const response = await props.request({ type: 'plugins/list' });
     setLoading(false);
     if (!response.success) {
-      setError(response.error);
+      reportError?.(response.error);
       return;
     }
-    const data = response.data as { plugins: InstalledPlugin[] };
+    const data = response.data as {
+      plugins?: InstalledPlugin[];
+      bundled?: BundledPluginSummary[];
+    };
     setPlugins(data.plugins ?? []);
-  }, [props]);
+    setBundled(data.bundled ?? []);
+  }, [props, reportError]);
 
   useEffect(() => {
     void loadPlugins();
@@ -76,6 +86,15 @@ export function PluginsPanel(props: PluginsPanelProps) {
         plugin.name.toLowerCase().includes(query) || plugin.id.toLowerCase().includes(query),
     );
   }, [plugins, filter]);
+
+  const bundledVisible = useMemo(() => {
+    const query = filter.trim().toLowerCase();
+    if (!query) return bundled;
+    return bundled.filter(
+      (entry) =>
+        entry.name.toLowerCase().includes(query) || entry.id.toLowerCase().includes(query),
+    );
+  }, [bundled, filter]);
 
   function parseSecrets(raw: string): Record<string, string> {
     const result: Record<string, string> = {};
@@ -97,7 +116,7 @@ export function PluginsPanel(props: PluginsPanelProps) {
     busyId?: string,
   ): Promise<boolean> {
     setInstallingId(busyId ?? 'manual');
-    setError(null);
+    reportError?.(null);
     const response = await props.request({
       type: 'plugins/install',
       source,
@@ -105,10 +124,10 @@ export function PluginsPanel(props: PluginsPanelProps) {
     });
     setInstallingId(null);
     if (!response.success) {
-      setError(response.error);
+      reportError?.(response.error);
       return false;
     }
-    setInfo(successMsg);
+    reportInfo?.(successMsg);
     setInstallPath('');
     setInstallGitUrl('');
     setInstallRegistryId('');
@@ -118,24 +137,26 @@ export function PluginsPanel(props: PluginsPanelProps) {
   }
 
   async function handleUninstall(plugin: InstalledPlugin): Promise<void> {
-    setError(null);
+    reportError?.(null);
     const response = await props.request({
       type: 'plugins/uninstall',
       pluginId: plugin.id,
     });
     if (!response.success) {
-      setError(response.error);
+      reportError?.(response.error);
       return;
     }
-    setInfo(isChinese ? `已卸载插件：${plugin.name}` : `Uninstalled plugin: ${plugin.name}`);
+    reportInfo?.(isChinese ? `已卸载插件：${plugin.name}` : `Uninstalled plugin: ${plugin.name}`);
     void loadPlugins();
   }
 
   async function handleLoadRegistry(): Promise<void> {
-    setError(null);
+    setRegistryLoading(true);
+    reportError?.(null);
     const response = await props.request({ type: 'plugins/registry/list' });
+    setRegistryLoading(false);
     if (!response.success) {
-      setError(response.error);
+      reportError?.(response.error);
       return;
     }
     const data = response.data as { index: PluginRegistryIndex };
@@ -159,7 +180,6 @@ export function PluginsPanel(props: PluginsPanelProps) {
         ) : null}
 
         <div className="plugin-market">
-          <CapabilityDiscoveryHint kind="plugin" />
           <div className="plugin-market-header">
             <TextInput
               toolbar
@@ -171,13 +191,6 @@ export function PluginsPanel(props: PluginsPanelProps) {
             />
           </div>
 
-          {error || info ? (
-            <div className="ui-feedback-host" aria-live="polite" style={{ marginBottom: 16 }}>
-              {error ? <Notice tone="error">{error}</Notice> : null}
-              {info ? <Notice tone="info">{info}</Notice> : null}
-            </div>
-          ) : null}
-
           {loading ? (
             <div style={{ padding: '32px', textAlign: 'center' }}>
               <Spinner />
@@ -185,6 +198,7 @@ export function PluginsPanel(props: PluginsPanelProps) {
           ) : (
             <PluginYoursPane
               plugins={yoursVisible}
+              bundled={bundledVisible}
               isChinese={isChinese}
               emptyFilter={Boolean(filter)}
               installKind={installKind}
@@ -195,6 +209,7 @@ export function PluginsPanel(props: PluginsPanelProps) {
               installing={installingId !== null}
               installOpen={installOpen}
               registryOpen={registryOpen}
+              registryLoading={registryLoading}
               registry={registry}
               onInstallKind={setInstallKind}
               onInstallPath={setInstallPath}
@@ -207,6 +222,27 @@ export function PluginsPanel(props: PluginsPanelProps) {
                 if (open && !registry) void handleLoadRegistry();
               }}
               onUninstall={(plugin) => void handleUninstall(plugin)}
+              bundledSecrets={bundledSecrets}
+              onBundledSecret={(pluginId, secretName, value) => {
+                setBundledSecrets((current) => ({
+                  ...current,
+                  [`${pluginId}:${secretName}`]: value,
+                }));
+              }}
+              onInstallBundled={(bundledId) => {
+                const entry = bundled.find((plugin) => plugin.id === bundledId);
+                const secrets: Record<string, string> = {};
+                for (const secretName of entry?.secretNames ?? []) {
+                  const value = (bundledSecrets[`${bundledId}:${secretName}`] ?? '').trim();
+                  if (value) secrets[secretName] = value;
+                }
+                void handleInstall(
+                  { kind: 'bundled', bundledId },
+                  secrets,
+                  isChinese ? '插件已安装' : 'Plugin installed',
+                  bundledId,
+                );
+              }}
               onInstallLocal={() => {
                 if (!installPath.trim()) return;
                 void handleInstall(

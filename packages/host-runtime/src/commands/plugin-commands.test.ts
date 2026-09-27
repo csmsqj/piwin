@@ -134,10 +134,17 @@ describe('handlePluginCommand', () => {
       expect(uninstallResult?.type).toBe('response');
       expect(uninstallResult).toHaveProperty('success', true);
 
-      // List should be empty.
       const listAfter = await handlePluginCommand({ type: 'plugins/list' }, 'req-4', context);
-      const afterData = (listAfter as { data?: { plugins: unknown[] } }).data;
+      const afterData = (listAfter as {
+        data?: { plugins: unknown[]; bundled: Array<{ id: string }> };
+      }).data;
       expect(afterData?.plugins).toHaveLength(0);
+      expect(afterData?.bundled.map((entry) => entry.id)).toEqual([
+        'cloudflare',
+        'github',
+        'remotion',
+        'hyperframes',
+      ]);
 
       // MCP config should no longer have the server.
       const mcpAfter = await loadMcpConfig(root);

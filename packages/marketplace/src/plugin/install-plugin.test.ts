@@ -237,25 +237,23 @@ describe('installPlugin (local)', () => {
     }
   });
 
-  it('installs bundled Figma and HyperFrames without secrets', async () => {
-    for (const bundledId of ['figma', 'hyperframes'] as const) {
-      const root = await mkdtemp(join(tmpdir(), 'piwin-install-'));
-      const mergedServers: Record<string, { command: string; args?: string[] }> = {};
-      try {
-        const result = await installPlugin({
-          piwinRoot: root,
-          installSkill: copyLocalSkill,
-          source: { kind: 'bundled', bundledId },
-          mergeMcpServer: async (serverId, config) => {
-            mergedServers[serverId] = config;
-          },
-        });
-        expect(result.pluginId).toBe(bundledId);
-        expect(result.mcpServerIds).toEqual([`plugin__${bundledId}__${bundledId}`]);
-        expect(mergedServers[`plugin__${bundledId}__${bundledId}`]?.args?.[1]).toBe('mcp-remote');
-      } finally {
-        await rm(root, { recursive: true, force: true }).catch(() => undefined);
-      }
+  it('installs bundled HyperFrames without secrets', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'piwin-install-'));
+    const mergedServers: Record<string, { command: string; args?: string[] }> = {};
+    try {
+      const result = await installPlugin({
+        piwinRoot: root,
+        installSkill: copyLocalSkill,
+        source: { kind: 'bundled', bundledId: 'hyperframes' },
+        mergeMcpServer: async (serverId, config) => {
+          mergedServers[serverId] = config;
+        },
+      });
+      expect(result.pluginId).toBe('hyperframes');
+      expect(result.mcpServerIds).toEqual(['plugin__hyperframes__hyperframes']);
+      expect(mergedServers['plugin__hyperframes__hyperframes']?.args?.[1]).toBe('mcp-remote');
+    } finally {
+      await rm(root, { recursive: true, force: true }).catch(() => undefined);
     }
   });
 });

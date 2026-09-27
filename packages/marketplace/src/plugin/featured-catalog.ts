@@ -1,8 +1,8 @@
 /**
- * First-party marketplace plugins shipped with the Host.
- * Users opt in from Settings → Plugins; nothing here auto-installs.
+ * Plugins shipped with the Host and listed on every data root.
+ * Figma is not in this set. Installing still opts in and writes MCP or skills.
  */
-import type { PluginManifest } from '@piwin/contracts';
+import type { BundledPluginSummary, PluginManifest } from '@piwin/contracts';
 
 export type FeaturedPluginCategory = 'featured';
 
@@ -75,19 +75,6 @@ const GITHUB_MANIFEST: PluginManifest = {
   ],
 };
 
-const FIGMA_MANIFEST: PluginManifest = {
-  id: 'figma',
-  version: '1.0.0',
-  name: 'Figma',
-  description: 'Design-to-code workflows from Figma files',
-  mcpServers: {
-    figma: {
-      command: 'npx',
-      args: ['-y', 'mcp-remote', 'https://mcp.figma.com/mcp'],
-    },
-  },
-};
-
 const HYPERFRAMES_MANIFEST: PluginManifest = {
   id: 'hyperframes',
   version: '1.0.0',
@@ -132,9 +119,27 @@ export const FEATURED_PLUGINS: readonly FeaturedPluginEntry[] = [
     gitSource: { url: 'https://github.com/remotion-dev/skills.git' },
   },
   { id: 'hyperframes', category: 'featured', manifest: HYPERFRAMES_MANIFEST },
-  { id: 'figma', category: 'featured', manifest: FIGMA_MANIFEST },
 ];
 
 export function findFeaturedPlugin(pluginId: string): FeaturedPluginEntry | undefined {
   return FEATURED_PLUGINS.find((entry) => entry.id === pluginId);
+}
+
+/** Catalog rows for `plugins/list`. Independent of `~/.piwin/plugins`. */
+export function listBundledPluginSummaries(): BundledPluginSummary[] {
+  return FEATURED_PLUGINS.map((entry) => {
+    const summary: BundledPluginSummary = {
+      id: entry.manifest.id,
+      name: entry.manifest.name,
+      version: entry.manifest.version,
+      skillCount: entry.manifest.skills?.length ?? 0,
+      mcpServerCount: Object.keys(entry.manifest.mcpServers ?? {}).length,
+      secretCount: entry.manifest.secrets?.length ?? 0,
+      secretNames: (entry.manifest.secrets ?? []).map((secret) => secret.name),
+    };
+    if (entry.manifest.description) {
+      summary.description = entry.manifest.description;
+    }
+    return summary;
+  });
 }

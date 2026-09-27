@@ -77,6 +77,22 @@ export type PluginRegistryIndex = {
 };
 
 /**
+ * A plugin whose manifest ships with the Host. Present on every data root,
+ * including a fresh test host, whether or not the operator has installed it.
+ */
+export type BundledPluginSummary = {
+  id: string;
+  name: string;
+  version: string;
+  description?: string;
+  skillCount: number;
+  mcpServerCount: number;
+  secretCount: number;
+  /** Required secret names collected at install. Empty when the plugin has none. */
+  secretNames: string[];
+};
+
+/**
  * Persisted record of an installed plugin. Stored in
  * `~/.piwin/plugins/installed.json`. Tracks everything the plugin owns so
  * uninstall can cleanly reverse the installation.

@@ -120,7 +120,12 @@ export function ExtensionsPage(): ReactElement {
 
       {activeTab === 'plugins' && (
         <div className="settings-card" data-testid="settings-plugins">
-          <PluginsPanel request={requestPlugins} variant="inline" />
+          <PluginsPanel
+            request={requestPlugins}
+            variant="inline"
+            onError={settings.setError}
+            onInfo={settings.setInfo}
+          />
         </div>
       )}
       </div>

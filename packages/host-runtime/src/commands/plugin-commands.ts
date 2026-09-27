@@ -16,6 +16,7 @@ import {
   fetchPluginRegistry,
   findInstalledPlugin,
   installPlugin,
+  listBundledPluginSummaries,
   loadInstalledPlugins,
   removeInstalledPlugin,
 } from '@piwin/marketplace';
@@ -75,7 +76,10 @@ export async function handlePluginCommand(
     case 'plugins/list': {
       const rootDir = getPiwinRoot(context.piwinRoot);
       const plugins = await loadInstalledPlugins(rootDir);
-      return ok(requestId, 'plugins/list', { plugins });
+      return ok(requestId, 'plugins/list', {
+        plugins,
+        bundled: listBundledPluginSummaries(),
+      });
     }
 
     case 'plugins/uninstall': {

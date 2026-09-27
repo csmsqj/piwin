@@ -2,7 +2,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import type { HostResponse, InstalledPlugin, PluginInstallSource } from '@piwin/contracts';
+import type {
+  BundledPluginSummary,
+  HostResponse,
+  InstalledPlugin,
+  PluginInstallSource,
+} from '@piwin/contracts';
 import { PiwinUiProvider } from '@piwin/ui-kit';
 import { PIWIN_APPEARANCE_DARK } from './appearance-tokens.js';
 import { DesktopLocaleProvider } from './desktop-locale-context.js';
@@ -34,13 +39,33 @@ function installedCloudflare(): InstalledPlugin {
   };
 }
 
-function createRequest(installed: InstalledPlugin[] = []) {
+function bundledRow(id: string, name: string): BundledPluginSummary {
+  return {
+    id,
+    name,
+    version: '1.0.0',
+    skillCount: 0,
+    mcpServerCount: 1,
+    secretCount: 0,
+    secretNames: [],
+  };
+}
+
+function createRequest(
+  installed: InstalledPlugin[] = [],
+  bundled: BundledPluginSummary[] = [],
+) {
   const plugins = [...installed];
   const calls: PluginCommand[] = [];
   const request = vi.fn(async (command: PluginCommand): Promise<HostResponse> => {
     calls.push(command);
     if (command.type === 'plugins/list') {
-      return { type: 'response', command: 'plugins/list', success: true, data: { plugins } };
+      return {
+        type: 'response',
+        command: 'plugins/list',
+        success: true,
+        data: { plugins, bundled },
+      };
     }
     if (command.type === 'plugins/install') {
       if (command.source?.kind === 'bundled') {
@@ -63,7 +88,10 @@ function createRequest(installed: InstalledPlugin[] = []) {
   return { request, calls, plugins };
 }
 
-async function renderPanel(request: (command: PluginCommand) => Promise<HostResponse>): Promise<{
+async function renderPanel(
+  request: (command: PluginCommand) => Promise<HostResponse>,
+  feedback?: { onError?: (message: string | null) => void; onInfo?: (message: string | null) => void },
+): Promise<{
   container: HTMLDivElement;
   root: Root;
 }> {
@@ -75,7 +103,12 @@ async function renderPanel(request: (command: PluginCommand) => Promise<HostResp
       (
         <PiwinUiProvider manifest={PIWIN_APPEARANCE_DARK}>
           <DesktopLocaleProvider locale="en" onLocaleChange={() => undefined}>
-            <PluginsPanel request={request as never} variant="inline" />
+            <PluginsPanel
+              request={request as never}
+              variant="inline"
+              {...(feedback?.onError ? { onError: feedback.onError } : {})}
+              {...(feedback?.onInfo ? { onInfo: feedback.onInfo } : {})}
+            />
           </DesktopLocaleProvider>
         </PiwinUiProvider>
       ) as ReactElement,
@@ -108,12 +141,58 @@ describe('PluginsPanel', () => {
     expect(mounted.container.querySelector('[data-testid="plugin-market-featured"]')).toBeNull();
   });
 
-  it('points discovery at the agent and the sidebar marketplace', async () => {
+  it('lists the built-in plugins and leaves Figma out', async () => {
+    const { request } = createRequest([], [
+      bundledRow('cloudflare', 'Cloudflare'),
+      bundledRow('github', 'GitHub'),
+      bundledRow('remotion', 'Remotion'),
+      bundledRow('hyperframes', 'HyperFrames'),
+    ]);
+    mounted = await renderPanel(request);
+    const text = mounted.container.querySelector('[data-testid="plugins-bundled"]')?.textContent ?? '';
+    expect(text).toContain('Cloudflare');
+    expect(text).toContain('GitHub');
+    expect(text).toContain('Remotion');
+    expect(text).toContain('HyperFrames');
+    expect(text).not.toContain('Figma');
+    expect(mounted.container.textContent).not.toContain('No plugins installed');
+  });
+
+  it('sends registry failures to the caller toast and stops the spinner', async () => {
+    const onError = vi.fn();
+    const request = vi.fn(async (command: PluginCommand): Promise<HostResponse> => {
+      if (command.type === 'plugins/registry/list') {
+        return {
+          type: 'response',
+          command: 'plugins/registry/list',
+          success: false,
+          error: 'Registry fetch failed: 404 Not Found',
+        };
+      }
+      return {
+        type: 'response',
+        command: command.type,
+        success: true,
+        data: { plugins: [], bundled: [] },
+      };
+    });
+    mounted = await renderPanel(request, { onError });
+    const toggle = mounted.container.querySelector('[data-testid="plugins-registry-toggle"]');
+    expect(toggle).not.toBeNull();
+    await act(async () => {
+      toggle?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(onError).toHaveBeenCalledWith('Registry fetch failed: 404 Not Found');
+    expect(mounted.container.querySelector('.ui-feedback-host')).toBeNull();
+    expect(mounted.container.querySelector('[data-testid="plugins-registry-spinner"]')).toBeNull();
+  });
+
+  it('does not render discovery hint in the plugins panel', async () => {
     const { request, calls } = createRequest();
     mounted = await renderPanel(request);
     expect(
-      mounted.container.querySelector('[data-testid="capability-discovery-hint-plugin"]')?.textContent,
-    ).toContain('Marketplace');
+      mounted.container.querySelector('[data-testid="capability-discovery-hint-plugin"]'),
+    ).toBeNull();
     expect(calls.some((call) => call.type === 'plugins/install')).toBe(false);
   });
 });
