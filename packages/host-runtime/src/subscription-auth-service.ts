@@ -589,6 +589,12 @@ export class SubscriptionAuthService {
         return method;
       }
     }
+    if (
+      prompt.message?.includes('press Enter for browser login') ||
+      (active.providerId === 'commandcode' && prompt.type === 'text' && !active.authUrl && prompt.message?.includes('browser login'))
+    ) {
+      return '';
+    }
     const promptId = randomUUID();
     const payload = promptToPayload(active, promptId, prompt);
     active.currentPrompt = payload;

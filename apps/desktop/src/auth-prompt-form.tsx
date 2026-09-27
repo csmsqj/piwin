@@ -231,40 +231,74 @@ export function InlineAuthPromptForm(props: InlineAuthPromptFormProps): ReactEle
           }}
         >
           <div className="oauth-inline-field">
-            <label className="oauth-inline-label">
-              {prompt.placeholder?.includes('http') || prompt.message?.includes('URL') || prompt.message?.includes('url')
+            {(() => {
+              const isUrlPrompt = Boolean(
+                prompt.placeholder?.includes('http') ||
+                prompt.message?.includes('URL') ||
+                prompt.message?.includes('url'),
+              );
+              const isKeyPrompt = Boolean(
+                prompt.kind === 'secret' ||
+                prompt.message?.toLowerCase().includes('api key') ||
+                prompt.message?.toLowerCase().includes('paste'),
+              );
+              const labelText = isUrlPrompt
                 ? (isChinese ? '回调 URL' : 'Callback URL')
-                : (prompt.message || (isChinese ? '认证凭证' : 'Credentials'))}
-            </label>
-            <TextInput
-              autoFocus
-              type={prompt.kind === 'secret' ? 'password' : 'text'}
-              value={value}
-              placeholder={prompt.placeholder || (isChinese ? 'http://localhost:1455/auth/callback?code=...&state=...' : 'Enter response...')}
-              onChange={(event) => onChange(event.currentTarget.value)}
-              className="oauth-inline-input"
-            />
-            <p className="oauth-inline-hint">
-              {prompt.instructions ?? (isChinese
-                ? '在浏览器完成授权并跳转到 localhost 页面后，将浏览器地址栏中的完整 URL 粘贴至此处提交。'
-                : 'After completing authorization, copy the final redirected URL from your browser address bar and paste here.')}
-            </p>
-          </div>
+                : isKeyPrompt
+                  ? (isChinese ? 'API Key 凭证' : 'API Key')
+                  : (prompt.message || (isChinese ? '认证凭证' : 'Credentials'));
+              const placeholderText =
+                prompt.placeholder ||
+                (isUrlPrompt
+                  ? (isChinese ? 'http://localhost:1455/auth/callback?code=...&state=...' : 'Enter callback URL...')
+                  : isKeyPrompt
+                    ? (isChinese ? '粘贴 API Key...' : 'Paste your API key...')
+                    : (isChinese ? '请输入...' : 'Enter response...'));
+              const hintText =
+                prompt.instructions ??
+                (isUrlPrompt
+                  ? (isChinese
+                      ? '在浏览器完成授权并跳转到 localhost 页面后，将浏览器地址栏中的完整 URL 粘贴至此处提交。'
+                      : 'After completing authorization, copy the final redirected URL from your browser address bar and paste here.')
+                  : isKeyPrompt
+                    ? (isChinese ? '在此处粘贴你的 API Key 并提交。' : 'Paste your API key here and submit.')
+                    : undefined);
+              const submitText = isUrlPrompt
+                ? (isChinese ? '提交回调 URL' : 'Submit Callback URL')
+                : isKeyPrompt
+                  ? (isChinese ? '提交 API Key' : 'Submit API Key')
+                  : (isChinese ? '提交' : 'Submit');
 
-          <div className="oauth-inline-actions-row">
-            <Button type="submit" variant="primary" size="compact">
-              {isChinese ? '提交回调 URL' : 'Submit Callback URL'}
-            </Button>
+              return (
+                <>
+                  <label className="oauth-inline-label">{labelText}</label>
+                  <TextInput
+                    autoFocus
+                    type={prompt.kind === 'secret' ? 'password' : 'text'}
+                    value={value}
+                    placeholder={placeholderText}
+                    onChange={(event) => onChange(event.currentTarget.value)}
+                    className="oauth-inline-input"
+                  />
+                  {hintText ? <p className="oauth-inline-hint">{hintText}</p> : null}
+                  <div className="oauth-inline-actions-row">
+                    <Button type="submit" variant="primary" size="compact">
+                      {submitText}
+                    </Button>
 
-            <Button type="button" variant="secondary" size="compact" onClick={onCancel}>
-              <X size={13} />
-              <span>{isChinese ? '取消连接' : 'Cancel'}</span>
-            </Button>
+                    <Button type="button" variant="secondary" size="compact" onClick={onCancel}>
+                      <X size={13} />
+                      <span>{isChinese ? '取消连接' : 'Cancel'}</span>
+                    </Button>
 
-            <div className="oauth-inline-waiting-status">
-              <span className="oauth-status-dot is-pulse" />
-              <span>{isChinese ? '等待认证中...' : 'Waiting for authentication...'}</span>
-            </div>
+                    <div className="oauth-inline-waiting-status">
+                      <span className="oauth-status-dot is-pulse" />
+                      <span>{isChinese ? '等待认证中...' : 'Waiting for auth...'}</span>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </form>
       ) : null}

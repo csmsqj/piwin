@@ -144,6 +144,36 @@ describe('SubscriptionAuthService', () => {
     expect(selected).toEqual(['browser']);
   });
 
+  it('auto-selects browser login when prompt asks to press Enter for browser login', async () => {
+    const selected: string[] = [];
+    const port = fakePort();
+    port.login = async (_providerId, interaction) => {
+      selected.push(
+        await interaction.prompt({
+          type: 'text',
+          message:
+            "Command Code login: press Enter for browser login, type 'key' to paste an API key, or paste the API key directly:",
+        }),
+      );
+      interaction.notify({
+        type: 'auth_url',
+        url: 'https://commandcode.ai/studio/auth/cli?callback=http://localhost:5959/callback',
+      });
+      return { kind: 'ok' };
+    };
+    const config: PiwinConfig = createDefaultPiwinConfig();
+    const service = new SubscriptionAuthService(
+      { port },
+      { loadConfig: async () => config, saveConfig: async () => undefined },
+    );
+    await service.login({
+      providerId: 'openai-codex',
+      ownerDeviceId: 'desktop-1',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(selected).toEqual(['']);
+  });
+
   it('opens the auth URL on the Host when Pi notifies', async () => {
     const opened: string[] = [];
     const port = fakePort();
