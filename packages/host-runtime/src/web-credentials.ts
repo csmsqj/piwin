@@ -1,4 +1,5 @@
 import type { WebConfig, WebSearchSource } from '@piwin/contracts';
+import { isRedactedStoredSecret } from '@piwin/contracts';
 import type { WebRuntimeCredentials } from '@piwin/tools-web';
 import type { SecretResolver } from './secret-resolver.js';
 
@@ -48,8 +49,32 @@ function firstNonEmptySecretLine(secret: string | null): string | undefined {
  */
 export function withDraftSearchSource(config: WebConfig, draft: WebSearchSource | undefined): WebConfig {
   if (!draft) return config;
+  const saved = config.searchSources.find((source) => source.id === draft.id);
+  const restored = restoreDraftSearchSourceSecrets(draft, saved);
   return {
     ...config,
-    searchSources: [...config.searchSources.filter((source) => source.id !== draft.id), draft],
+    searchSources: [...config.searchSources.filter((source) => source.id !== draft.id), restored],
+  };
+}
+
+/**
+ * Remote shells project `apiKeyRef` / `apiKeyEnv` as `[stored-secret]`. A
+ * Settings connectivity test sends that placeholder back as the unsaved draft;
+ * treat it as "keep the Host value" so Devin/Brave do not run keyless.
+ */
+function restoreDraftSearchSourceSecrets(
+  draft: WebSearchSource,
+  saved: WebSearchSource | undefined,
+): WebSearchSource {
+  const { apiKeyRef: draftRef, apiKeyEnv: draftEnv, ...rest } = draft;
+  let apiKeyRef = isRedactedStoredSecret(draftRef) ? saved?.apiKeyRef : draftRef;
+  let apiKeyEnv = isRedactedStoredSecret(draftEnv) ? saved?.apiKeyEnv : draftEnv;
+  if (!apiKeyRef?.trim() && rest.kind === 'devin') {
+    apiKeyRef = saved?.apiKeyRef?.trim() || 'oauth:devin';
+  }
+  return {
+    ...rest,
+    ...(apiKeyRef?.trim() ? { apiKeyRef: apiKeyRef.trim() } : {}),
+    ...(apiKeyEnv?.trim() ? { apiKeyEnv: apiKeyEnv.trim() } : {}),
   };
 }

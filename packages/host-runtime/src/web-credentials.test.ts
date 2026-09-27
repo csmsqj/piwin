@@ -53,4 +53,26 @@ describe('withDraftSearchSource', () => {
     const merged = withDraftSearchSource(saved, { id: 'devin', kind: 'devin', enabled: true, apiKeyRef: 'oauth:devin' });
     expect(merged.searchSources).toEqual([{ id: 'devin', kind: 'devin', enabled: true, apiKeyRef: 'oauth:devin' }]);
   });
+
+  it('keeps the Host oauth:devin ref when a remote shell sends [stored-secret]', async () => {
+    const saved = {
+      ...createDefaultWebConfig(),
+      searchSources: [{ id: 'devin', kind: 'devin' as const, enabled: true, apiKeyRef: 'oauth:devin' }],
+    };
+    const draft = {
+      id: 'devin',
+      kind: 'devin' as const,
+      enabled: true,
+      apiKeyRef: '[stored-secret]',
+    };
+    const merged = withDraftSearchSource(saved, draft);
+    expect(merged.searchSources).toEqual([
+      { id: 'devin', kind: 'devin', enabled: true, apiKeyRef: 'oauth:devin' },
+    ]);
+    const credentials = await resolveWebRuntimeCredentials(merged, {
+      readSecretByRef: async (ref: string) =>
+        ref === 'oauth:devin' ? 'devin-session-token$jwt' : null,
+    } as unknown as SecretResolver);
+    expect(credentials.searchApiKeysBySourceId?.devin).toBe('devin-session-token$jwt');
+  });
 });

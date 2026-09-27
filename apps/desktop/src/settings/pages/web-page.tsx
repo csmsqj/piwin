@@ -47,6 +47,8 @@ import { HostWorkspacePicker } from '../../host-workspace-picker';
 import { pickLocalFile } from '../../pick-project-directory';
 import { FETCH_PROVIDER_OPTIONS, SOURCE_KIND_OPTIONS } from './web-page-options';
 import { WebDevinSourceCard } from '../web-devin-source-card';
+import { useDevinAccount } from '../use-devin-account.js';
+import { useDevinLogoutSearch } from '../use-devin-logout-search.js';
 import { useResetSettingsMainScroll } from '../use-reset-settings-scroll.js';
 
 type SearchDelegateOption = {
@@ -77,6 +79,13 @@ export function WebPage(): ReactElement {
     hostClient,
   } = useSettings();
   const [webToolsTab, setWebToolsTab] = useState<'search' | 'fetch' | 'log'>('search');
+  const devinAccount = useDevinAccount();
+  useDevinLogoutSearch({
+    account: devinAccount,
+    draft: webDraft,
+    setDraft: setWebDraft,
+    save: saveWeb,
+  });
   useResetSettingsMainScroll(webToolsTab);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [expandedSourceIds, setExpandedSourceIds] = useState<Set<string>>(() => new Set());
@@ -536,7 +545,10 @@ export function WebPage(): ReactElement {
                                 id,
                                 kind: 'devin',
                                 enabled: true,
-                                apiKeyRef: source?.apiKeyRef || 'oauth:devin',
+                                // Remote settings project apiKeyRef as
+                                // `[stored-secret]`; Devin always reuses the
+                                // Host OAuth account.
+                                apiKeyRef: 'oauth:devin',
                               });
                             }}
                           />

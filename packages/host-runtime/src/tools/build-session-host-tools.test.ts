@@ -1,15 +1,18 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ARTIFACT_INSTRUCTIONS_TOOL_NAME,
   createDefaultArtifactConfig,
+  createDefaultWebConfig,
   KNOWLEDGE_TOOL_NAMES,
+  type HostToolExecutionContext,
 } from '@piwin/contracts';
 import { createFolderRag } from '@piwin/doc-rag';
 import { createNoteStore } from '@piwin/notes';
 import { createDefaultPiwinConfig } from '../config-store.js';
+import type { SecretResolver } from '../secret-resolver.js';
 import { buildSessionHostTools } from './build-session-host-tools.js';
 
 describe('buildSessionHostTools artifact_instructions', () => {
@@ -76,6 +79,74 @@ describe('buildSessionHostTools artifact_instructions', () => {
       ).toBe(true);
     } finally {
       rag.close();
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('buildSessionHostTools web_search credentials', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('hands oauth:devin to the Devin search source at execute time', async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), 'piwin-web-devin-compose-'));
+    const posted: Array<{ url: string; apiKey: string }> = [];
+    vi.stubGlobal(
+      'fetch',
+      (async (input: unknown, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body ?? '{}')) as {
+          metadata?: { apiKey?: string };
+        };
+        posted.push({ url: String(input), apiKey: body.metadata?.apiKey ?? '' });
+        return new Response(
+          JSON.stringify({
+            results: [{ title: 'Piwin', url: 'https://example.com/piwin', snippet: 'ok' }],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }) as typeof fetch,
+    );
+    try {
+      const tools = await buildSessionHostTools({
+        sessionId: 'session-devin-search',
+        piwinRoot: rootDir,
+        config: {
+          ...createDefaultPiwinConfig(),
+          web: {
+            ...createDefaultWebConfig(),
+            searchRoutePolicy: 'external-first',
+            searchSources: [
+              { id: 'devin', kind: 'devin', enabled: true, apiKeyRef: 'oauth:devin' },
+            ],
+          },
+        },
+        secretResolver: {
+          readSecretByRef: async (ref: string) =>
+            ref === 'oauth:devin' ? 'devin-session-token$jwt' : null,
+        } as unknown as SecretResolver,
+      });
+      const search = tools.find((tool) => tool.descriptor.name === 'web_search');
+      if (!search) {
+        throw new Error('web_search missing');
+      }
+      const context: HostToolExecutionContext = {
+        sessionId: 'session-devin-search',
+        runtimeGenerationId: 'generation-1',
+        runId: 'run-1',
+        toolName: 'web_search',
+      };
+      const result = await search.execute(
+        { query: 'piwin' },
+        new AbortController().signal,
+        context,
+      );
+      if (!result.ok) {
+        throw new Error(result.message);
+      }
+      expect(posted[0]?.apiKey).toBe('devin-session-token$jwt');
+      expect(posted[0]?.url).toContain('GetWebSearchResults');
+    } finally {
       await rm(rootDir, { recursive: true, force: true });
     }
   });

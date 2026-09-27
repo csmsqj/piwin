@@ -59,6 +59,8 @@ export type CodeSearchWindsurfBackendOptions = {
   readSecretByRef?: (ref: string) => Promise<string | null>;
   env?: NodeJS.ProcessEnv;
   now?: () => number;
+  /** Host config root so `oauth:devin` reads `{piwinRoot}/pi-agent/auth.json`. */
+  piwinRoot?: string;
 };
 
 /** Read the `exp` claim (seconds) from a JWT without verifying it. */
@@ -93,7 +95,9 @@ export function createWindsurfCompletionPort(
 ): CodeSearchCompletionPort {
   const fetchImplementation = options.fetch ?? globalThis.fetch;
   const clock = options.now ?? Date.now;
-  const resolver = options.readSecretByRef ? undefined : createSecretResolver();
+  const resolver = options.readSecretByRef
+    ? undefined
+    : createSecretResolver(options.piwinRoot === undefined ? {} : { piwinRoot: options.piwinRoot });
   const chatPath = options.chatPath ?? WINDSURF_STREAM_PATH;
 
   let cachedJwt: { value: string; expiresAt: number } | undefined;
@@ -302,6 +306,7 @@ export type WindsurfTokenProbeOptions = {
   env?: NodeJS.ProcessEnv;
   signal?: AbortSignal;
   timeoutMs?: number;
+  piwinRoot?: string;
 };
 
 /**
@@ -324,7 +329,9 @@ export async function probeWindsurfToken(
   if (options.apiKey?.trim()) {
     token = normalizeWindsurfToken(options.apiKey);
   } else if (options.apiKeyRef) {
-    const resolver = options.readSecretByRef ? undefined : createSecretResolver();
+    const resolver = options.readSecretByRef
+      ? undefined
+      : createSecretResolver(options.piwinRoot === undefined ? {} : { piwinRoot: options.piwinRoot });
     const fromRef = options.readSecretByRef
       ? await options.readSecretByRef(options.apiKeyRef)
       : await resolver?.readSecretByRef(options.apiKeyRef);

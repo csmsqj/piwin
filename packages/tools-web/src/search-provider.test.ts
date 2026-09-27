@@ -18,12 +18,47 @@ function ddgBlockedResponse(): Response {
 }
 
 describe('search providers', () => {
-  it('none / empty sources errors clearly', async () => {
+  it('uses free DuckDuckGo when nothing is configured', async () => {
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', (async (input: unknown) => {
+      urls.push(String(input));
+      return new Response('{"Results":[],"RelatedTopics":[]}', { status: 200 });
+    }) as typeof fetch);
     const provider = createSearchProvider({
       searchProvider: 'none',
       searchSources: [],
     });
-    await expect(provider.search('q', { limit: 3 })).rejects.toThrow(/disabled/);
+    await provider.search('q', { limit: 1 });
+    expect(urls.some((url) => url.includes('duckduckgo.com'))).toBe(true);
+  });
+
+  it('uses DuckDuckGo when Devin is enabled but has no key', async () => {
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', (async (input: unknown) => {
+      urls.push(String(input));
+      return new Response('{"Results":[],"RelatedTopics":[]}', { status: 200 });
+    }) as typeof fetch);
+    const provider = createSearchProvider({
+      searchSources: [{ id: 'devin', kind: 'devin', enabled: true, apiKeyRef: 'oauth:devin' }],
+    });
+    await provider.search('q', { limit: 1 });
+    expect(urls.some((url) => url.includes('codeium.com'))).toBe(false);
+    expect(urls.some((url) => url.includes('duckduckgo.com'))).toBe(true);
+  });
+
+  it('keeps a keyed Devin source and does not add DuckDuckGo', async () => {
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', (async (input: unknown) => {
+      urls.push(String(input));
+      return new Response(JSON.stringify({ results: [] }), { status: 200 });
+    }) as typeof fetch);
+    const provider = createSearchProvider(
+      { searchSources: [{ id: 'devin', kind: 'devin', enabled: true, apiKeyRef: 'oauth:devin' }] },
+      { searchApiKeysBySourceId: { devin: 'devin-session-token$jwt' } },
+    );
+    await provider.search('q', { limit: 1 });
+    expect(urls.some((url) => url.includes('GetWebSearchResults'))).toBe(true);
+    expect(urls.some((url) => url.includes('duckduckgo.com'))).toBe(false);
   });
 
   it('packing default via resolveWebConfig is native-first with no external sources', () => {

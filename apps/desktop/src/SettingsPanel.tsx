@@ -251,8 +251,11 @@ export const SettingsPanel = memo(function SettingsPanel({
     };
     return hostClient.subscribe((message) => {
       if (message.type === 'settings/updated') {
-        if (shouldSyncSettingsProviders(message.changedDomains)) {
-          void syncProviders();
+        const searchChanged =
+          message.changedDomains?.some((domain) => domain === 'web' || domain === 'codeSearch') ===
+          true;
+        if (searchChanged || shouldSyncSettingsProviders(message.changedDomains)) {
+          void syncProviders(searchChanged);
         }
         return;
       }

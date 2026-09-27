@@ -592,3 +592,17 @@ export type WebConfig = {
   fetchTimeoutMs: number;
   fetchBlockedUrlPrefixes: string[];
 };
+
+/**
+ * Devin OAuth logout turns off the Devin search switch. If that was the only
+ * enabled source, free DuckDuckGo turns on.
+ */
+export function planDevinLogoutSearch(
+  sources: readonly { kind: string; enabled: boolean }[],
+): { disableDevin: true; enableDuckDuckGo: boolean } | undefined {
+  if (!sources.some((source) => source.kind === 'devin' && source.enabled)) {
+    return undefined;
+  }
+  const otherEnabled = sources.some((source) => source.enabled && source.kind !== 'devin');
+  return { disableDevin: true, enableDuckDuckGo: !otherEnabled };
+}

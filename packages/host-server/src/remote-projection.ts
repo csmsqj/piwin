@@ -14,6 +14,7 @@ import {
   denyRemoteLocalFileTarget,
   hostOsFamilyFromNodePlatform,
   hostPathStyleFromOsFamily,
+  isOauthSecretRef,
   readActivitySummaryData,
   REDACTED_STORED_SECRET,
 } from '@piwin/contracts';
@@ -615,9 +616,16 @@ function projectRemoteSettingsValue(value: unknown, key: string | undefined, dep
     return undefined;
   }
   if (key === 'apiKeyRef' || key === 'apiKeyEnv') {
-    return typeof value === 'string' && value.trim().length > 0
-      ? REDACTED_STORED_SECRET
-      : undefined;
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      return undefined;
+    }
+    const trimmed = value.trim();
+    // `oauth:devin` is an account pointer, not a secret. Redacting it makes
+    // Settings treat a Devin-backed code_search/web source as a pasted token.
+    if (key === 'apiKeyRef' && isOauthSecretRef(trimmed)) {
+      return trimmed;
+    }
+    return REDACTED_STORED_SECRET;
   }
   if (key !== undefined && REMOTE_SETTINGS_OMITTED_KEYS.has(key)) {
     return undefined;

@@ -10,6 +10,7 @@ import {
   DEFAULT_FETCH_STORE_MAX_CHARS,
   inferSearchRoutePolicy,
   isCustomWebSearchKind,
+  planDevinLogoutSearch,
   type ModelRef,
   type SearchRoutePolicy,
   type WebConfig,
@@ -173,6 +174,32 @@ export function findCustomSearchSource(
   sources: readonly DraftSearchSource[],
 ): DraftSearchSource | undefined {
   return sources.find((source) => isCustomWebSearchKind(source.kind));
+}
+
+/** Devin OAuth logout: that switch goes off. DuckDuckGo turns on only when nothing else is on. */
+export function draftAfterDevinLogout(draft: DraftWeb): DraftWeb | undefined {
+  const plan = planDevinLogoutSearch(draft.searchSources);
+  if (!plan) return undefined;
+  let searchSources = draft.searchSources.map((source) =>
+    source.kind === 'devin' ? { ...source, enabled: false } : source,
+  );
+  if (plan.enableDuckDuckGo) {
+    const index = searchSources.findIndex((source) => source.kind === 'duckduckgo');
+    if (index >= 0) {
+      searchSources = searchSources.map((source, sourceIndex) =>
+        sourceIndex === index ? { ...source, enabled: true } : source,
+      );
+    } else {
+      searchSources = [
+        createDraftSearchSource(
+          'duckduckgo',
+          searchSources.map((source) => source.id),
+        ),
+        ...searchSources,
+      ];
+    }
+  }
+  return { ...draft, searchSources };
 }
 
 export function createDraftSearchSource(

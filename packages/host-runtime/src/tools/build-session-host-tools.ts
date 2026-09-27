@@ -89,6 +89,7 @@ import { buildWebPageRenderer } from '../model-web-page-renderer.js';
 import { buildWebDocumentExtractor } from '../model-web-document-extractor.js';
 import { createSessionFetchSpillStore } from '../fetch-spill-store.js';
 import { getWebSearchLogStore } from '../web-search-log-store.js';
+import { resolveWebRuntimeCredentials } from '../web-credentials.js';
 
 /**
  * Lazy provider for notes services. The Host owns the lifecycle; this
@@ -219,8 +220,12 @@ export async function buildSessionHostTools(
     const webFetchExtractDelegate = options.secretResolver
       ? buildWebFetchExtractDelegate(options.config, options.secretResolver)
       : undefined;
+    const webCredentials = options.secretResolver
+      ? await resolveWebRuntimeCredentials(options.config.web, options.secretResolver)
+      : undefined;
     const webRegistration = buildSessionTools({
       webConfig: options.config.web,
+      ...(webCredentials ? { webCredentials } : {}),
       ...(webSearchDelegate ? { webSearchDelegate } : {}),
       ...(webFetchExtractDelegate ? { webFetchExtractDelegate } : {}),
       ...(options.config.web.fetchFallback === 'browser'
@@ -278,11 +283,15 @@ export async function buildSessionHostTools(
       }
       return { provider: found.provider, modelId: found.model.id };
     };
+    const secretResolver = options.secretResolver;
     const readiness = resolveCodeSearchBackend({
       cwd: fsCwd,
       config: codeSearchConfig,
       resolveModel,
       ...(rootDir ? { piwinRoot: rootDir } : {}),
+      ...(secretResolver
+        ? { readSecretByRef: (ref) => secretResolver.readSecretByRef(ref) }
+        : {}),
     });
     if (readiness.ready) {
       const codeSearchTool = buildCodeSearchTool({

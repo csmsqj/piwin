@@ -270,6 +270,26 @@ describe('CodeSearchPage', () => {
     expect(container.querySelector('[data-testid="code-search-model"]')).toBeNull();
   });
 
+  it('stays on the Devin account tab when oauth:devin is set even if apiKeyEnv is redacted', async () => {
+    const contextValue = createContextValue({
+      config: createConfig({
+        codeSearch: {
+          enabled: true,
+          backend: 'windsurf',
+          apiKeyRef: 'oauth:devin',
+          apiKeyEnv: '[stored-secret]',
+        },
+      }),
+    });
+    await renderPage(contextValue);
+
+    expect(container.querySelector('[data-testid="code-search-devin-credential"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="code-search-windsurf-token"]')).toBeNull();
+    expect(
+      container.querySelector('[data-testid="code-search-credential-source"]')?.textContent,
+    ).toMatch(/Devin 账号|Devin account/);
+  });
+
   it('defaults an empty windsurf config to the Devin account, without a token field', async () => {
     const contextValue = createContextValue({
       config: createConfig({ codeSearch: { enabled: true, backend: 'windsurf' } }),

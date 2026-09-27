@@ -82,17 +82,7 @@ export function createSearchProvider(
       },
     };
   }
-  const enabled = resolved.searchSources.filter((source) => source.enabled);
-  if (enabled.length === 0) {
-    return {
-      id: 'none',
-      async search(): Promise<SearchHit[]> {
-        throw new Error(
-          'web search disabled (no enabled searchSources). Configure sources in Settings → Web or ~/.piwin/config.json',
-        );
-      },
-    };
-  }
+  const enabled = usableSearchSources(resolved.searchSources, credentials);
   if (enabled.length === 1) {
     const only = enabled[0];
     if (!only) {
@@ -106,6 +96,55 @@ export function createSearchProvider(
     resolved.searchMaxResults,
     credentials,
   );
+}
+
+const FREE_DUCKDUCKGO: WebSearchSource = {
+  id: 'duckduckgo',
+  kind: 'duckduckgo',
+  enabled: true,
+};
+
+/**
+ * No enabled source, or only a Devin source with no account key, is not a
+ * configuration. web_search uses free DuckDuckGo. A source the user turned on
+ * themselves (Brave, Tavily, CLI, HTTP) stays, even if its key is missing.
+ */
+function usableSearchSources(
+  sources: readonly WebSearchSource[],
+  credentials: WebRuntimeCredentials,
+): WebSearchSource[] {
+  const enabled = sources.filter((source) => source.enabled);
+  const selfConfigured = enabled.filter(
+    (source) => source.kind !== 'devin' && source.kind !== 'duckduckgo',
+  );
+  const duckduckgo = enabled.filter((source) => source.kind === 'duckduckgo');
+  const devin = enabled.filter(
+    (source) => source.kind === 'devin' && searchSourceHasKey(source, credentials),
+  );
+  if (selfConfigured.length === 0 && devin.length === 0 && duckduckgo.length === 0) {
+    return [FREE_DUCKDUCKGO];
+  }
+  return [...duckduckgo, ...selfConfigured, ...devin];
+}
+
+function searchSourceHasKey(source: WebSearchSource, credentials: WebRuntimeCredentials): boolean {
+  if (credentials.searchApiKeysBySourceId?.[source.id]?.trim()) {
+    return true;
+  }
+  const envName = source.apiKeyEnv?.trim();
+  if (envName && process.env[envName]?.trim()) {
+    return true;
+  }
+  if (source.kind === 'devin') {
+    return Boolean(process.env.WINDSURF_API_KEY?.trim());
+  }
+  if (source.kind === 'brave') {
+    return Boolean(process.env.BRAVE_API_KEY?.trim());
+  }
+  if (source.kind === 'tavily') {
+    return Boolean(process.env.TAVILY_API_KEY?.trim());
+  }
+  return false;
 }
 
 export async function webSearch(

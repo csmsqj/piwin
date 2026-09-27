@@ -102,6 +102,36 @@ describe('remote settings projection', () => {
     expect(serialized).not.toContain('"remote"');
   });
 
+  it('keeps oauth:devin refs so Settings can tell a Devin account from a pasted token', () => {
+    const projected = projectRemoteSettingsData({
+      snapshot: {
+        schemaVersion: 2,
+        revision: 'rev-devin',
+        runtimeRevision: 'rev-devin',
+        domainRevisions: { web: 'w', codeSearch: 'c' },
+        config: {
+          web: {
+            searchSources: [
+              { id: 'devin', kind: 'devin', enabled: true, apiKeyRef: 'oauth:devin' },
+              { id: 'brave', kind: 'brave', enabled: false, apiKeyRef: 'keychain:piwin-web-brave' },
+            ],
+          },
+          codeSearch: {
+            enabled: true,
+            backend: 'windsurf',
+            apiKeyRef: 'oauth:devin',
+            apiKeyEnv: 'WINDSURF_API_KEY',
+          },
+        },
+      },
+    });
+    const serialized = JSON.stringify(projected);
+    expect(serialized).toContain('"apiKeyRef":"oauth:devin"');
+    expect(serialized).not.toContain('keychain:piwin-web-brave');
+    expect(serialized).toContain('[stored-secret]');
+    expect(serialized).not.toContain('WINDSURF_API_KEY');
+  });
+
   it('keeps knowledge reranker and notes extras in the settings projection', () => {
     const projected = projectRemoteSettingsData({
       snapshot: {
