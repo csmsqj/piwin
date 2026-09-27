@@ -347,8 +347,9 @@ html:is([data-theme-id='piwin-inkstone-paper']) .market-carousel-nav:hover {
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: rgba(20, 18, 16, 0.65);
-  backdrop-filter: blur(8px);
+  /* No backdrop blur: product glass is whitelisted for the memory diet
+     (renderer-resource-boundaries). The background carries the contrast. */
+  background: rgba(20, 18, 16, 0.78);
   border: 1px solid var(--line-2, rgba(235, 229, 218, 0.12));
   color: var(--text-1);
   display: grid;
