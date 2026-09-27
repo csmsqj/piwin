@@ -61,6 +61,28 @@ const EXTENSION_ENTRY: MarketplaceCatalogEntry = {
   },
 };
 
+const COMMAND_CODE_ENTRY: MarketplaceCatalogEntry = {
+  ...EXTENSION_ENTRY,
+  entryId: 'extension:mimimaster/commandcode-provider',
+  capabilityId: 'piwin-mimimaster-commandcode-provider',
+  name: { en: 'Command Code for piwin', zhCN: 'Command Code for piwin' },
+  summary: { en: 'Command Code models', zhCN: 'Command Code 模型' },
+  description: { en: 'Command Code models', zhCN: 'Command Code 模型' },
+  version: '0.7.1-piwin.1',
+  author: 'mimimaster',
+  sourceLabel: 'piwin-extensions',
+  install: {
+    kind: 'managed-extension',
+    name: 'piwin-mimimaster-commandcode-provider',
+    source: {
+      kind: 'git',
+      url: 'https://github.com/mimimaster/piwin-commandcode-provider',
+      ref: '8ff038e7cb425d2210abfeebef9bfc2f6e6e66ad',
+      subdir: 'piwin',
+    },
+  },
+};
+
 type FakeHost = {
   request: ReturnType<typeof vi.fn>;
   commands: () => HostCommand[];
@@ -193,16 +215,9 @@ describe('MarketplaceWorkspaceView', () => {
   });
 
   it('shows only registry entries in the piwin extension filter', async () => {
-    const registryEntry: MarketplaceCatalogEntry = {
-      ...EXTENSION_ENTRY,
-      entryId: 'extension:mimimaster/commandcode-provider',
-      capabilityId: 'piwin-mimimaster-commandcode-provider',
-      name: { en: 'Command Code', zhCN: 'Command Code' },
-      sourceLabel: 'piwin-extensions',
-    };
     const host = createFakeHost({
       'marketplace/catalog-list': (command) => ok(command.type, {
-        entries: [EXTENSION_ENTRY, SKILL_ENTRY, registryEntry],
+        entries: [EXTENSION_ENTRY, SKILL_ENTRY, COMMAND_CODE_ENTRY],
       }),
     });
     render(host);
@@ -726,4 +741,55 @@ describe('MarketplaceWorkspaceView', () => {
     expect(catalogCards?.length).toBe(1);
     expect(catalogCards?.[0]?.textContent).toContain('skill-creator');
   });
+  it('searches, installs, enables, and applies a registry extension to the current session', async () => {
+    const host = createFakeHost({
+      'marketplace/catalog-list': (command) => ok(command.type, { entries: [COMMAND_CODE_ENTRY] }),
+      'extensions/install': (command) => {
+        host.setItems([installedItem({
+          installationKey: 'extension:piwin-mimimaster-commandcode-provider',
+          capabilityId: COMMAND_CODE_ENTRY.capabilityId,
+          kind: 'extension',
+          name: 'Command Code for piwin',
+          catalogEntryId: COMMAND_CODE_ENTRY.entryId,
+        })]);
+        return ok(command.type, {
+          extensionId: COMMAND_CODE_ENTRY.capabilityId,
+          configuredEnabled: false,
+        });
+      },
+      'extensions/apply': (command) => ok(command.type, {
+        sessionId: 's1', deploymentId: 'd1', state: 'active',
+        when: 'after-current-run', registryRevision: 'r1',
+      }),
+    });
+    render(host, { sessionId: 's1' });
+    await flush();
+    act(() => { setInputValue(container.querySelector('[data-testid="marketplace-search-input"]'), 'Command Code for piwin'); });
+    const card = container.querySelector('[data-testid="market-entry-extension:mimimaster/commandcode-provider"]');
+    expect(card).not.toBeNull();
+    act(() => { findButton(card ?? container, '安装')?.click(); });
+    act(() => { document.querySelector<HTMLButtonElement>('[data-testid="marketplace-entry-install"]')?.click(); });
+    await flush();
+
+    const sent = host.commands();
+    expect(sent).toContainEqual({
+      type: 'extensions/install',
+      source: COMMAND_CODE_ENTRY.install.kind === 'managed-extension'
+        ? COMMAND_CODE_ENTRY.install.source : undefined,
+      name: COMMAND_CODE_ENTRY.capabilityId,
+    });
+    expect(sent).toContainEqual({
+      type: 'extensions/set_enabled',
+      extensionId: COMMAND_CODE_ENTRY.capabilityId,
+      enabled: true,
+    });
+    expect(sent).toContainEqual({ type: 'extensions/apply', sessionId: 's1', when: 'after-current-run' });
+    expect(sent.findIndex((command) => command.type === 'extensions/install')).toBeLessThan(
+      sent.findIndex((command) => command.type === 'extensions/set_enabled'),
+    );
+    expect(sent.findIndex((command) => command.type === 'extensions/set_enabled')).toBeLessThan(
+      sent.findIndex((command) => command.type === 'extensions/apply'),
+    );
+  });
+
 });

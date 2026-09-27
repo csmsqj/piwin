@@ -301,10 +301,6 @@ piwin extension enable <id>                      # 启用
 
 打开 [piwin 扩展仓库](https://mimimaster.github.io/piwin-extensions/#/submit)，用 GitHub 登录，把扩展文件夹拖进去，点「一键发布」。页面会在你的账号下建仓库放源码，并替你向扩展仓库开 PR。发布前，页面会用和仓库 CI 相同的规则先检查一遍第 7 节的打包规则。完整说明见扩展仓库的 [CONTRIBUTING](https://github.com/mimimaster/piwin-extensions/blob/main/CONTRIBUTING.md)。
 
-合并后几分钟，所有 piwin 用户都能在桌面端扩展市场里搜到它，或者这样安装：
-
-```bash
-piwin extension install --registry <你的用户名>/<扩展名>
-```
+合并后几分钟，所有 piwin 用户都能在桌面端扩展市场里搜到它并安装。CLI 暂不使用。
 
 仓库索引由 Host 读取；桌面端「扩展市场 → piwin 扩展」会展示已上架条目。首个示例是 [Command Code for piwin](https://github.com/mimimaster/piwin-commandcode-provider/tree/main/piwin)：其 `piwin.json` 声明 `authProvider: "commandcode"`，启用后才会在 OAuth 设置中显示连接入口，授权后模型进入模型管理。当前这项 Host 授权桥接仅支持 Command Code；一般扩展无需也不能借此声明任意 OAuth 提供商。
