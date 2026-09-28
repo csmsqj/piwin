@@ -4,8 +4,10 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TranscriptScrollProvider } from './transcript-scroll-port';
 import {
+  adoptUserScrollBeforeTurnMeasure,
   createTranscriptRangeExtractor,
   shouldAdjustTranscriptScrollOnItemSizeChange,
+  shouldIgnoreTailRestick,
   shouldVirtualizeTranscript,
   TRANSCRIPT_VIRTUALIZATION_THRESHOLD,
   TRANSCRIPT_TURN_GAP_PX,
@@ -752,6 +754,73 @@ describe('shouldAdjustTranscriptScrollOnItemSizeChange', () => {
         false,
       ),
     ).toBe(true);
+  });
+
+  it('adopts an upward user scroll before a stale end-anchor measure', () => {
+    const scroller = document.createElement('div');
+    Object.defineProperty(scroller, 'scrollTop', { value: 4_200, configurable: true });
+    Object.defineProperty(scroller, 'scrollHeight', { value: 12_000, configurable: true });
+    Object.defineProperty(scroller, 'clientHeight', { value: 800, configurable: true });
+    const instance = {
+      scrollElement: scroller,
+      scrollOffset: 8_800,
+      scrollAdjustments: 400,
+      options: { anchorTo: 'end' as const },
+    };
+    adoptUserScrollBeforeTurnMeasure(instance, false);
+    expect(instance.scrollOffset).toBe(4_200);
+    expect(instance.scrollAdjustments).toBe(0);
+    expect(instance.options.anchorTo).toBe('start');
+  });
+
+  it('drops a write that would pull a history reader back into the tail band', () => {
+    expect(
+      shouldIgnoreTailRestick({
+        following: false,
+        liveScrollTop: 4_200,
+        maxScrollTop: 8_800,
+        targetScrollTop: 8_760,
+      }),
+    ).toBe(true);
+  });
+
+  it('keeps a history compensation that stays above the tail band', () => {
+    expect(
+      shouldIgnoreTailRestick({
+        following: false,
+        liveScrollTop: 4_200,
+        maxScrollTop: 12_000,
+        targetScrollTop: 6_000,
+      }),
+    ).toBe(false);
+  });
+
+  it('still allows a following reader to be pinned to the tail', () => {
+    expect(
+      shouldIgnoreTailRestick({
+        following: true,
+        liveScrollTop: 4_200,
+        maxScrollTop: 8_800,
+        targetScrollTop: 8_760,
+      }),
+    ).toBe(false);
+  });
+
+  it('leaves a following tail offset alone so pin-to-end can finish', () => {
+    const scroller = document.createElement('div');
+    Object.defineProperty(scroller, 'scrollTop', { value: 4_200, configurable: true });
+    Object.defineProperty(scroller, 'scrollHeight', { value: 12_000, configurable: true });
+    Object.defineProperty(scroller, 'clientHeight', { value: 800, configurable: true });
+    const instance = {
+      scrollElement: scroller,
+      scrollOffset: 8_800,
+      scrollAdjustments: 400,
+      options: { anchorTo: 'end' as const },
+    };
+    adoptUserScrollBeforeTurnMeasure(instance, true);
+    expect(instance.scrollOffset).toBe(8_800);
+    expect(instance.scrollAdjustments).toBe(400);
+    expect(instance.options.anchorTo).toBe('end');
   });
 
   it('does not shift a spanning remasure (live tail growth) while following', () => {

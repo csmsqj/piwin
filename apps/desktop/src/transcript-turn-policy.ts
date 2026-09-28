@@ -43,6 +43,75 @@ type TranscriptVirtualizerScrollState = {
 };
 
 /**
+ * Same band as the viewport tail zone. Inside it, end-anchoring may still
+ * keep a following reader on the latest row. Outside it, end-anchoring must
+ * not run.
+ */
+const HISTORY_READING_DISTANCE_PX = 64;
+
+export type TurnMeasureScrollInstance = {
+  scrollElement: unknown;
+  scrollOffset: number | null;
+  scrollAdjustments: number;
+  options: { anchorTo?: 'start' | 'end' };
+};
+
+/**
+ * TanStack records scroll offset from the scroll event, but ResizeObserver
+ * measure often runs first. `anchorTo: 'end'` then still sees the pre-wheel
+ * offset, decides the reader is on the tail, and writes `scrollTop` back.
+ * On a long turn that remeasures while the wheel is in flight, every upward
+ * gesture is cancelled or reversed.
+ *
+ * Before that decision, adopt the DOM offset when the reader has already
+ * moved up and is not following the tail, and stop end-anchoring while they
+ * are clearly in history.
+ */
+export function adoptUserScrollBeforeTurnMeasure(
+  instance: TurnMeasureScrollInstance,
+  following: boolean,
+): void {
+  const scroller = instance.scrollElement;
+  if (!(scroller instanceof HTMLElement) || instance.scrollOffset === null) {
+    return;
+  }
+  if (following) {
+    return;
+  }
+  if (instance.scrollOffset - scroller.scrollTop > 1) {
+    instance.scrollOffset = scroller.scrollTop;
+    instance.scrollAdjustments = 0;
+  }
+  const distanceFromEnd = scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop;
+  if (distanceFromEnd > HISTORY_READING_DISTANCE_PX) {
+    instance.options.anchorTo = 'start';
+  }
+}
+
+/**
+ * A tail restick writes scrollTop back into the bottom band. While the reader
+ * is already above that band, that write is the upward gesture being erased.
+ * Growth of a row above the fold still lands well above the band and is kept.
+ */
+export function shouldIgnoreTailRestick(options: {
+  following: boolean;
+  liveScrollTop: number;
+  maxScrollTop: number;
+  targetScrollTop: number;
+}): boolean {
+  if (options.following) {
+    return false;
+  }
+  const liveDistance = options.maxScrollTop - options.liveScrollTop;
+  const targetDistance = options.maxScrollTop - options.targetScrollTop;
+  return (
+    liveDistance > HISTORY_READING_DISTANCE_PX &&
+    options.targetScrollTop > options.liveScrollTop + 1 &&
+    targetDistance <= HISTORY_READING_DISTANCE_PX
+  );
+}
+
+/**
  * Pin-to-end is `notifyContentGrew` only. This predicate keeps the row the
  * user is reading still — it must not restick the live tail.
  *

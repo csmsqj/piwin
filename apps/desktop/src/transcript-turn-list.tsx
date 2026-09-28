@@ -14,7 +14,9 @@ import {
   buildTranscriptStreamingMeasureKey,
   buildTranscriptTurnsStructureKey,
   createTranscriptRangeExtractor,
+  adoptUserScrollBeforeTurnMeasure,
   shouldAdjustTranscriptScrollOnItemSizeChange,
+  shouldIgnoreTailRestick,
   shouldVirtualizeTranscript,
   transcriptVirtualizerMeasurePolicy,
   TRANSCRIPT_LIVE_TAIL_PIN_COUNT,
@@ -239,8 +241,15 @@ function VirtualizedTranscriptTurns(
     (
       element: HTMLElement,
       entry: ResizeObserverEntry | undefined,
-      instance: { itemSizeCache: ReadonlyMap<string | number | bigint, number> },
+      instance: {
+        itemSizeCache: ReadonlyMap<string | number | bigint, number>;
+        scrollElement: unknown;
+        scrollOffset: number | null;
+        scrollAdjustments: number;
+        options: { anchorTo?: 'start' | 'end' };
+      },
     ) => {
+      adoptUserScrollBeforeTurnMeasure(instance, props.scrollPort.isFollowingTail());
       // Observer box can be the clipped slot; scrollHeight is the natural body.
       const rawHeight = readMountedTranscriptTurnHeight({ element, entry });
       const normalized = normalizeTranscriptTurnHeight(rawHeight);
@@ -258,7 +267,7 @@ function VirtualizedTranscriptTurns(
       return (turnId ? instance.itemSizeCache.get(turnId) : undefined)
         ?? TRANSCRIPT_TURN_ESTIMATED_HEIGHT_PX;
     },
-    [props.scrollPort.sessionId],
+    [props.scrollPort.isFollowingTail, props.scrollPort.sessionId],
   );
 
   const measurePolicy = transcriptVirtualizerMeasurePolicy();
@@ -267,7 +276,7 @@ function VirtualizedTranscriptTurns(
     getScrollElement: () => props.scrollPort.scrollElement,
     estimateSize,
     getItemKey,
-    anchorTo: 'end',
+    anchorTo: props.scrollPort.isFollowingTail() ? 'end' : 'start',
     followOnAppend: false,
     gap: TRANSCRIPT_TURN_GAP_PX,
     measureElement,
@@ -275,6 +284,19 @@ function VirtualizedTranscriptTurns(
     rangeExtractor,
     scrollMargin,
     scrollToFn: (offset, options, instance) => {
+      const scroller = props.scrollPort.scrollElement;
+      const target = offset + (options.adjustments ?? 0);
+      if (
+        scroller &&
+        shouldIgnoreTailRestick({
+          following: props.scrollPort.isFollowingTail(),
+          liveScrollTop: scroller.scrollTop,
+          maxScrollTop: Math.max(0, scroller.scrollHeight - scroller.clientHeight),
+          targetScrollTop: target,
+        })
+      ) {
+        return;
+      }
       if (options.adjustments) {
         props.scrollPort.beginProgrammaticScroll();
       }
