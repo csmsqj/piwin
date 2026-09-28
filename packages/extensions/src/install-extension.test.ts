@@ -131,4 +131,28 @@ describe('installExtension git errors', () => {
     });
     expect(await readFile(join(result.targetPath, 'index.ts'), 'utf8')).toContain('oldVersion');
   });
+
+  it('selects the new revision when updating an existing extension', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'piwin-ext-update-'));
+    const srcDir = await mkdtemp(join(tmpdir(), 'piwin-ext-src-update-'));
+    const srcFile = join(srcDir, 'myext.ts');
+    await writeFile(srcFile, 'export default function v1() {}\n', 'utf8');
+
+    const first = await installExtension({
+      piwinRoot: root,
+      source: { kind: 'local', path: srcFile },
+    });
+    expect(first.extensionId).toBe('myext');
+
+    await writeFile(srcFile, 'export default function v2() {}\n', 'utf8');
+    const second = await installExtension({
+      piwinRoot: root,
+      source: { kind: 'local', path: srcFile },
+    });
+
+    expect(second.contentRevision).not.toBe(first.contentRevision);
+    const store = (await import('./extension-revision-store.js')).createExtensionRevisionStore(root);
+    const record = await store.getRecord('myext');
+    expect(record?.selectedRevision).toBe(second.contentRevision);
+  });
 });

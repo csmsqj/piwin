@@ -14,6 +14,7 @@ export type MarketKindFilter = 'all' | MarketplaceCapabilityKind | 'piwin-extens
  */
 export type MarketOperation =
   | 'installing'
+  | 'updating'
   | 'enabling'
   | 'applying'
   | 'starting'

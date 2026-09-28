@@ -1,0 +1,328 @@
+/* Marketplace entry detail dialog (marketplace-entry-dialog.tsx).
+   Read top to bottom like a catalogue slip: seal + title, what it does,
+   a four-cell provenance ledger, prerequisites, example requests, then the
+   runtime risk right above the one action that accepts it. Header and footer
+   stay put; only the middle scrolls, so the install button never leaves view.
+   Inkstone tokens first, Deck names as fallback. */
+
+.modal.ui-dialog-content.market-entry-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(560px, calc(100vw - 32px));
+  max-height: min(720px, calc(100vh - 48px));
+  padding: 0;
+  overflow: hidden;
+}
+
+.market-entry {
+  --me-t1: var(--t1, var(--text-1));
+  --me-t2: var(--t2, var(--text-2));
+  --me-t3: var(--t3, var(--text-3));
+  --me-t4: var(--t4, var(--text-4, var(--text-3)));
+  --me-line: var(--l1, var(--line-1));
+  --me-zhu: var(--zhu, var(--iris));
+  --me-pine: var(--pine, var(--mint));
+  --me-lamp: var(--ochre, var(--amber));
+  /* Tint from the ink colour, not a surface step: reads as a recessed well
+     on paper and on ink without a per-face override. */
+  --me-well: color-mix(in srgb, var(--me-t1) 3.5%, transparent);
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ── Head ──────────────────────────────────────────────────────────── */
+
+.market-entry-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 22px 18px 18px 24px;
+}
+
+.market-entry-heading {
+  min-width: 0;
+}
+
+.modal .market-entry-title {
+  margin: 0;
+  color: var(--me-t1);
+  font-family: var(--serif, var(--font-serif, serif));
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+
+.market-entry-kicker {
+  margin: 3px 0 0;
+  color: var(--me-t3);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.market-entry-close {
+  align-self: start;
+  color: var(--me-t3);
+}
+
+/* ── Scroll body ───────────────────────────────────────────────────── */
+
+.market-entry-scroll {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 20px;
+  min-height: 0;
+  padding: 0 24px 22px;
+  overflow-y: auto;
+}
+
+.market-entry-desc {
+  margin: 0;
+  color: var(--me-t2);
+  font-size: 13.5px;
+  line-height: 1.7;
+}
+
+/* Provenance ledger: four equal cells split by hairlines. */
+.market-entry-ledger {
+  display: grid;
+  /* Evidence is a short label; let it size to content so version and
+     source get the room they need. */
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  margin: 0;
+  border-radius: 8px;
+  background: var(--me-well);
+  box-shadow: inset 0 0 0 1px var(--me-line);
+}
+
+.market-entry-ledger > div {
+  min-width: 0;
+  padding: 10px 12px 11px;
+}
+
+.market-entry-ledger > div + div {
+  border-left: 1px solid var(--me-line);
+}
+
+.market-entry-ledger dt {
+  margin: 0 0 4px;
+  color: var(--me-t4);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+}
+
+.market-entry-ledger dd {
+  margin: 0;
+  overflow: hidden;
+  color: var(--me-t1);
+  font-family: var(--mono, var(--font-mono, monospace));
+  font-size: 12px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Evidence is a state, not an identifier: sans, toned, with a lamp dot. */
+.market-entry-ledger dd.market-entry-evidence {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--me-lamp);
+  font-family: inherit;
+}
+
+.market-entry-ledger dd.market-entry-evidence::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.market-entry-ledger dd.market-entry-evidence[data-tested='true'] {
+  color: var(--me-pine);
+}
+
+/* Hangs off the ledger rather than floating as its own section. */
+.market-entry-note {
+  margin: -12px 0 0;
+  color: var(--me-t3);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* ── Sections ──────────────────────────────────────────────────────── */
+
+.market-entry-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.market-entry-section-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  color: var(--me-t2);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.market-entry-section-title::after {
+  content: '';
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--me-line);
+}
+
+.market-entry-requirements,
+.market-entry-examples {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.market-entry-requirements {
+  gap: 8px;
+}
+
+.market-entry-requirements li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--me-t2);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.market-entry-requirements .market-code-tag {
+  flex: none;
+}
+
+.market-entry-examples {
+  gap: 8px;
+}
+
+/* Example request: a slip with a vermilion margin rule, the same "your
+   hand" accent as the card's 试试 line. */
+.market-entry-example {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 10px 14px 11px 16px;
+  border-radius: 8px;
+  background: var(--me-well);
+  box-shadow: inset 0 0 0 1px var(--me-line);
+}
+
+.market-entry-example::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  bottom: 11px;
+  left: 0;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--me-zhu);
+}
+
+.market-entry-example-title {
+  color: var(--me-t3);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.market-entry-example-prompt {
+  margin: 3px 0 0;
+  color: var(--me-t1);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.market-entry-example-expect {
+  margin: 4px 0 0;
+  color: var(--me-t3);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.market-entry-example .market-entry-example-use {
+  margin: 6px 0 -3px -8px;
+}
+
+.market-entry-status {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Risk / status slip. Owned here rather than inherited from the Deck notice
+   so both Inkstone faces get the lamp (caution) or pine (installed) tone
+   from their own tokens. */
+.market-entry-status .ui-notice {
+  --me-tone: var(--me-lamp);
+  margin: 0;
+  padding: 10px 14px 11px 16px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--me-tone) 9%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--me-tone) 22%, transparent);
+  color: var(--me-t1);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.market-entry-status .ui-notice.tone-info {
+  --me-tone: var(--me-pine);
+}
+
+.market-entry-status .ui-notice::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  bottom: 11px;
+  left: 0;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--me-tone);
+}
+
+/* ── Foot ──────────────────────────────────────────────────────────── */
+
+.market-entry-foot {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px 14px 24px;
+  border-top: 1px solid var(--me-line);
+}
+
+.market-entry-foot .market-entry-source {
+  margin: 0 auto 0 -8px;
+  color: var(--me-t3);
+}
+
+@media (max-width: 520px) {
+  .market-entry-ledger {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .market-entry-ledger > div:nth-child(3) {
+    border-left: 0;
+  }
+  .market-entry-ledger > div:nth-child(n + 3) {
+    border-top: 1px solid var(--me-line);
+  }
+}

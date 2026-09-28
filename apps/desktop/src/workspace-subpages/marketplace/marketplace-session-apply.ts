@@ -35,7 +35,7 @@ export async function applyExtensionsToSession(
 
 export function describeExtensionChange(
   name: string,
-  change: 'installed' | 'removed' | 'enabled' | 'disabled',
+  change: 'installed' | 'removed' | 'enabled' | 'disabled' | 'updated',
   outcome: SessionApplyOutcome,
   locale: DesktopLocale | undefined,
 ): MarketplaceToast {
@@ -45,6 +45,7 @@ export function describeExtensionChange(
     removed: zh ? '已卸载' : 'removed',
     enabled: zh ? '已启用' : 'enabled',
     disabled: zh ? '已停用' : 'disabled',
+    updated: zh ? '已更新' : 'updated',
   }[change];
   const title = zh ? `[${name}] ${verb}` : `[${name}] ${verb}`;
   switch (outcome.kind) {

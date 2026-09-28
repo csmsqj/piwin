@@ -14,6 +14,7 @@ import {
   operationLabel,
   verificationLabel,
 } from './marketplace-copy.js';
+import { MarketplaceKindSeal } from './marketplace-kind-seal.js';
 import type { MarketOperation } from './marketplace-types.js';
 
 export type MarketplaceCatalogCardProps = {
@@ -22,18 +23,9 @@ export type MarketplaceCatalogCardProps = {
   operation: MarketOperation | undefined;
   locale?: DesktopLocale | undefined;
   onOpen: (entry: MarketplaceCatalogEntry) => void;
+  onUpdate?: ((entry: MarketplaceCatalogEntry, installed: MarketplaceInstalledItem) => void) | undefined;
 };
 
-const CARD_MARKS: Record<string, string> = {
-  'ff-labs-pi-fff': '搜',
-  'skill-creator': '创',
-  'mcp-builder': '构',
-  'webapp-testing': '测',
-  'frontend-design': '绘',
-  'doc-coauthoring': '文',
-  memory: '忆',
-  'sequential-thinking': '思',
-};
 
 export function MarketplaceCatalogCard(props: MarketplaceCatalogCardProps): ReactElement {
   const { entry, installed, operation, locale } = props;
@@ -42,9 +34,7 @@ export function MarketplaceCatalogCard(props: MarketplaceCatalogCardProps): Reac
     <div className="market-card" data-testid={`market-entry-${entry.entryId}`}>
       <div className="market-card-content">
         <div className="market-card-top">
-          <span className={`market-card-mark is-${entry.kind}`} aria-hidden="true">
-            {CARD_MARKS[entry.capabilityId] ?? entry.name.en.slice(0, 1)}
-          </span>
+          <MarketplaceKindSeal kind={entry.kind} />
           <div className="market-card-header-texts">
             <strong className="market-card-title" title={entry.name.en}>
               {entry.name.en}
@@ -85,6 +75,22 @@ export function MarketplaceCatalogCard(props: MarketplaceCatalogCardProps): Reac
                   {operationLabel(operation, locale)}
                 </span>
               </span>
+            </Button>
+          ) : installed && entry.version && installed.version && entry.version !== installed.version ? (
+            <Button
+              variant="primary"
+              size="compact"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (props.onUpdate && installed) {
+                  props.onUpdate(entry, installed);
+                } else {
+                  props.onOpen(entry);
+                }
+              }}
+              title={zh ? `可更新至 v${entry.version}` : `Update available: v${entry.version}`}
+            >
+              {zh ? `更新至 v${entry.version}` : `Update to v${entry.version}`}
             </Button>
           ) : (
             <Button

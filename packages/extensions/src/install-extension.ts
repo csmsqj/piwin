@@ -45,14 +45,17 @@ export async function installExtension(
       source: 'user',
       sourceLocator: `local:${absoluteSource}`,
     });
+    const selected = await store.selectRevision(staged.extensionId, staged.contentRevision);
+    const configuredEnabled =
+      selected.extensions[staged.extensionId]?.configuredEnabled ?? staged.record.configuredEnabled;
     return {
       extensionId: staged.extensionId,
       targetPath: staged.targetPath,
       packageRoot: staged.packageRoot,
       contentRevision: staged.contentRevision,
-      registryRevision: staged.registryRevision,
+      registryRevision: selected.revision,
       source: { kind: 'local', path: absoluteSource },
-      configuredEnabled: staged.record.configuredEnabled,
+      configuredEnabled,
     };
   }
   return installExtensionFromGit(store, {
@@ -96,6 +99,9 @@ async function installExtensionFromGit(
       source: 'user',
       sourceLocator,
     });
+    const selected = await store.selectRevision(staged.extensionId, staged.contentRevision);
+    const configuredEnabled =
+      selected.extensions[staged.extensionId]?.configuredEnabled ?? staged.record.configuredEnabled;
     const source: InstallSource = {
       kind: 'git',
       url: options.source.url,
@@ -107,9 +113,9 @@ async function installExtensionFromGit(
       targetPath: staged.targetPath,
       packageRoot: staged.packageRoot,
       contentRevision: staged.contentRevision,
-      registryRevision: staged.registryRevision,
+      registryRevision: selected.revision,
       source,
-      configuredEnabled: staged.record.configuredEnabled,
+      configuredEnabled,
     };
   } catch (error) {
     throw new Error(

@@ -64,6 +64,8 @@
 @import './styles/flashcard-inline-card.css';
 @import './styles/region-marketplace.css';
 @import './styles/region-marketplace-layout.css';
+@import './styles/region-marketplace-seals.css';
+@import './styles/region-marketplace-entry-dialog.css';
 
 @import './styles/region-notes.css';
 @import './styles/region-knowledge.css';

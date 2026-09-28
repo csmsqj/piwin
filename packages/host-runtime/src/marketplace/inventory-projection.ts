@@ -111,8 +111,13 @@ function projectExtension(
   const record = extension.managed ? recordsById.get(extension.id) : undefined;
   const { availability, message } = extensionAvailability(extension, record, input.session);
   const catalogEntry = input.matchCatalogEntry('extension', extension.id);
+  const isUserExtensionFile =
+    extension.source === 'user' &&
+    !extension.managed &&
+    Boolean(extension.path) &&
+    !extension.bundledFrom;
   const removal: MarketplaceInstalledItem['removal'] =
-    extension.managed && record && availability !== 'pending-removal'
+    (extension.managed && record && availability !== 'pending-removal') || isUserExtensionFile
       ? { command: 'extensions/uninstall' }
       : extension.piPackageSource
         ? { command: 'marketplace/package-remove', packageSource: extension.piPackageSource }

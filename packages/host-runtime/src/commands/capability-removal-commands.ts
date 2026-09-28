@@ -2,17 +2,19 @@
  * Host IPC: remove a Host-managed extension or an MCP server. Each removal
  * fails closed — the UI only hears "removed" once the owning store agrees.
  */
+import { rm, stat } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import type {
   ExtensionsUninstallData,
   HostCommand,
   HostResponse,
   McpRemoveData,
 } from '@piwin/contracts';
-import { formatError } from '@piwin/contracts';
+import { formatError, normalizeResourceId } from '@piwin/contracts';
 import { createExtensionRevisionStore } from '@piwin/extensions';
 import { loadMcpConfig, saveMcpConfig } from '@piwin/mcp';
 import { purgeUnreferencedExtensions } from '../marketplace/inventory-reader.js';
-import { getPiwinRoot } from '../paths.js';
+import { getPiwinExtensionsDir, getPiwinRoot } from '../paths.js';
 import { fail, ok } from '../response-helpers.js';
 import { pushExtensionCatalog } from './catalog-resources.js';
 import type { HostCommandContext } from './host-command-context.js';
@@ -26,14 +28,65 @@ async function uninstallExtension(
 ): Promise<HostResponse> {
   const rootDir = getPiwinRoot(context.piwinRoot);
   const store = createExtensionRevisionStore(rootDir);
-  const record = await store.getRecord(command.extensionId);
+  let record = await store.getRecord(command.extensionId);
   if (!record) {
+    const candidateId = normalizeResourceId(command.extensionId);
+    const allRecords = await store.listRecords();
+    record = allRecords.find(
+      (r) =>
+        r.id === candidateId ||
+        r.name === command.extensionId ||
+        r.id === candidateId.replace(/^piwin-/, '') ||
+        `piwin-${r.id}` === candidateId ||
+        r.name.replace(/^piwin-/, '') === candidateId.replace(/^piwin-/, ''),
+    );
+  }
+  if (!record) {
+    // Check if this is an unmanaged user extension in ~/.piwin/extensions/
+    const extensionsDir = resolve(getPiwinExtensionsDir(rootDir));
+    const normalizedInput = command.extensionId.replace(/^piwin-/, '');
+    const candidates = [
+      join(extensionsDir, command.extensionId),
+      join(extensionsDir, `${command.extensionId}.ts`),
+      join(extensionsDir, normalizedInput),
+      join(extensionsDir, `${normalizedInput}.ts`),
+    ];
+    let unmanagedTarget: string | undefined;
+    for (const cand of candidates) {
+      try {
+        await stat(cand);
+        if (resolve(cand).startsWith(extensionsDir) && resolve(cand) !== extensionsDir) {
+          unmanagedTarget = cand;
+          break;
+        }
+      } catch {}
+    }
+    if (unmanagedTarget) {
+      await rm(unmanagedTarget, { recursive: true, force: true });
+      await pushExtensionCatalog(context, rootDir, 'unmanaged-removed');
+      const data: ExtensionsUninstallData = {
+        extensionId: command.extensionId,
+        state: 'removed',
+      };
+      return ok(requestId, command.type, data);
+    }
     return fail(
       requestId,
       command.type,
       'Only Host-managed extensions can be uninstalled here; disable it, or remove the Pi package it came from.',
     );
   }
+
+  if (record.installationState === 'pending-removal' || command.force) {
+    await store.purgeRemoved(new Set());
+    await pushExtensionCatalog(context, rootDir, 'purged');
+    const data: ExtensionsUninstallData = {
+      extensionId: record.id,
+      state: 'removed',
+    };
+    return ok(requestId, command.type, data);
+  }
+
   const registry = await store.markPendingRemoval(record.id);
   const removed = await purgeUnreferencedExtensions(context);
   await pushExtensionCatalog(context, rootDir, registry.revision);

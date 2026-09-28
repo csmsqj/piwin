@@ -1,0 +1,113 @@
+/* Marketplace kind seals. One mark per capability kind, drawn from the
+   Inkstone seal vocabulary (permission-gates `.seal`, EmptyState seals):
+   - extension 器 · 白文印: solid vermilion, glyph reversed out. The heaviest
+     mark, for code that runs inside the Host.
+   - skill 法 · 朱文印: vermilion frame and glyph on bare paper. Same pigment,
+     lighter hand: a written method, not code.
+   - mcp 通 · 题签: ink glyph on a paper book-label with a double rule and a
+     tiny chop in the corner. Ink, not vermilion: a line out to someone
+     else's server.
+   Inkstone tokens first, Deck names as fallback so other themes still read. */
+
+.market-card-mark {
+  --seal-zhu: var(--zhu, var(--iris, #b03a24));
+  --seal-on-zhu: var(--on-zhu, #fff7f0);
+  --seal-ink: var(--t1, var(--text-1));
+  --seal-paper: var(--s3, var(--surface-3));
+  --seal-rule: var(--l3, var(--line-3, rgba(128, 128, 128, 0.3)));
+  position: relative;
+  display: grid;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  box-sizing: border-box;
+  font-family: var(--serif, var(--font-serif, serif));
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+  user-select: none;
+}
+
+/* Dialog header size. Inner rules keep their inset; only the field grows. */
+.market-card-mark.is-lg {
+  flex-basis: 44px;
+  width: 44px;
+  height: 44px;
+  font-size: 22px;
+}
+
+.market-card-mark.is-mcp.is-lg {
+  font-size: 21px;
+}
+
+.market-card-mark::before,
+.market-card-mark::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+}
+
+/* 白文印 — the only filled seal. Slight tilt and an inner hairline, the
+   same hand as the gate `.seal`; a faint mottle keeps the pigment from
+   reading as a flat UI chip. */
+.market-card-mark.is-extension {
+  border-radius: 3px;
+  background:
+    radial-gradient(circle at 80% 16%, rgba(255, 255, 255, 0.12), transparent 42%),
+    radial-gradient(circle at 14% 88%, rgba(0, 0, 0, 0.1), transparent 38%),
+    var(--seal-zhu);
+  color: var(--seal-on-zhu);
+  font-weight: 700;
+  transform: rotate(-2deg);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.18);
+}
+
+.market-card-mark.is-extension::after {
+  inset: 3px;
+  border: 1px solid color-mix(in srgb, var(--seal-on-zhu) 55%, transparent);
+  border-radius: 1.5px;
+}
+
+/* 朱文印 — frame and strokes in the same pigment, ground left bare. Tilts
+   the other way so a row of mixed kinds does not look machine-stamped. */
+.market-card-mark.is-skill {
+  border: 2px solid var(--seal-zhu);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--seal-zhu) 5%, transparent);
+  color: var(--seal-zhu);
+  transform: rotate(1.5deg);
+}
+
+.market-card-mark.is-skill::after {
+  inset: 2px;
+  border: 0.5px solid color-mix(in srgb, var(--seal-zhu) 40%, transparent);
+  border-radius: 2px;
+}
+
+/* 题签 — the paper label pasted on a thread-bound cover: raised slip,
+   double rule, ink glyph, and a 4px chop so it still belongs to the set. */
+.market-card-mark.is-mcp {
+  border-radius: 2px;
+  background: var(--seal-paper);
+  color: var(--seal-ink);
+  font-size: 17px;
+  box-shadow:
+    inset 0 0 0 1px var(--seal-rule),
+    0 1px 2px rgba(45, 35, 20, 0.06);
+}
+
+.market-card-mark.is-mcp::before {
+  inset: 3px;
+  border: 0.5px solid var(--seal-rule);
+  border-radius: 1px;
+}
+
+.market-card-mark.is-mcp::after {
+  right: 4px;
+  bottom: 4px;
+  width: 4px;
+  height: 4px;
+  border-radius: 0.5px;
+  background: var(--seal-zhu);
+}

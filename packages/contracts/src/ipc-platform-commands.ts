@@ -260,6 +260,8 @@ export type PlatformHostCommand =
        * `extensions/apply`; files are deleted once no runtime references them.
        */
       extensionId: string;
+      /** Force removal immediately without waiting for background unreferenced checks. */
+      force?: boolean;
     }
   | {
       id?: string;

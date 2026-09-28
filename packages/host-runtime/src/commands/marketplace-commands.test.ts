@@ -1,4 +1,4 @@
-import { mkdtemp, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -204,6 +204,46 @@ describe('capability removal commands', () => {
       fixture.context,
     );
     expect(dataOf(response)).toEqual({ extensionId: 'hello', state: 'removed' });
+  });
+
+  it('uninstalls with piwin- prefix or when already pending-removal', async () => {
+    const piwinRoot = await mkdtemp(join(tmpdir(), 'piwin-market-uninstall-prefix-'));
+    const fixture = makeFixture(piwinRoot);
+    const revision = await installManagedExtension(piwinRoot);
+    fixture.loaded.set('s1', [{ resourceId: 'hello', contentRevision: revision }]);
+
+    // First attempt marks pending-removal because s1 still loads it
+    const pending = await handleCapabilityRemovalCommand(
+      { type: 'extensions/uninstall', extensionId: 'piwin-hello' },
+      'r1',
+      fixture.context,
+    );
+    expect(dataOf(pending)).toEqual({ extensionId: 'hello', state: 'pending-removal' });
+
+    // Second attempt on pending-removal forces immediate purge
+    const forced = await handleCapabilityRemovalCommand(
+      { type: 'extensions/uninstall', extensionId: 'hello' },
+      'r2',
+      fixture.context,
+    );
+    expect(dataOf(forced)).toEqual({ extensionId: 'hello', state: 'removed' });
+  });
+
+  it('uninstalls unmanaged user extension files in ~/.piwin/extensions', async () => {
+    const piwinRoot = await mkdtemp(join(tmpdir(), 'piwin-market-unmanaged-file-'));
+    const fixture = makeFixture(piwinRoot);
+    const extDir = join(piwinRoot, 'extensions');
+    await mkdir(extDir, { recursive: true });
+    const extFile = join(extDir, 'custom-tool.ts');
+    await writeFile(extFile, 'export default function () {}\n', 'utf8');
+
+    const response = await handleCapabilityRemovalCommand(
+      { type: 'extensions/uninstall', extensionId: 'custom-tool' },
+      'r1',
+      fixture.context,
+    );
+    expect(dataOf(response)).toEqual({ extensionId: 'custom-tool', state: 'removed' });
+    await expect(stat(extFile)).rejects.toThrow();
   });
 
   it('refuses to uninstall an extension the Host does not manage', async () => {

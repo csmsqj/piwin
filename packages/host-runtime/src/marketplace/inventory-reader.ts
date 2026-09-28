@@ -40,6 +40,7 @@ export async function readMarketplaceInventory(
 ): Promise<MarketplaceInstalledListData> {
   const rootDir = getPiwinRoot(context.piwinRoot);
   const store = createExtensionRevisionStore(rootDir);
+  await purgeUnreferencedExtensions(context);
   const [resources, managedRecords, mcpConfig, mcpHealth, catalog] = await Promise.all([
     loadCatalogResources(rootDir, options.projectPath),
     store.listRecords(),
@@ -113,6 +114,7 @@ const INVENTORY_MUTATIONS: ReadonlyMap<HostCommand['type'], MarketplaceCapabilit
   ['extensions/install', ['extension']],
   ['extensions/set_enabled', ['extension']],
   ['extensions/uninstall', ['extension']],
+  ['extensions/apply', ['extension']],
   // A Pi package can ship extensions and skills together.
   ['marketplace/package-install', ['extension', 'skill']],
   ['marketplace/package-remove', ['extension', 'skill']],

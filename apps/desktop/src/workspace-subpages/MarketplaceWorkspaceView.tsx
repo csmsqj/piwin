@@ -139,6 +139,15 @@ export function MarketplaceWorkspaceView(props: MarketplaceWorkspaceViewProps): 
     return map;
   }, [data.items]);
 
+  const entryByCapability = useMemo(() => {
+    const map = new Map<string, MarketplaceCatalogEntry>();
+    for (const entry of data.entries) {
+      map.set(entry.entryId, entry);
+      map.set(entry.capabilityId, entry);
+    }
+    return map;
+  }, [data.entries]);
+
   const visibleEntries = useMemo(
     () =>
       data.entries
@@ -278,6 +287,9 @@ export function MarketplaceWorkspaceView(props: MarketplaceWorkspaceViewProps): 
                 operation={actions.operations[entry.entryId]}
                 locale={props.locale}
                 onOpen={(opened) => setOpenEntryId(opened.entryId)}
+                onUpdate={(targetEntry, targetInstalled) =>
+                  void actions.update(targetEntry, targetInstalled)
+                }
               />
             ))}
           </div>
@@ -325,6 +337,9 @@ export function MarketplaceWorkspaceView(props: MarketplaceWorkspaceViewProps): 
                 operation={actions.operations[entry.entryId]}
                 locale={props.locale}
                 onOpen={(opened) => setOpenEntryId(opened.entryId)}
+                onUpdate={(targetEntry, targetInstalled) =>
+                  void actions.update(targetEntry, targetInstalled)
+                }
               />
             ))}
           </div>
@@ -400,8 +415,16 @@ export function MarketplaceWorkspaceView(props: MarketplaceWorkspaceViewProps): 
               item={item}
               operation={actions.operations[item.installationKey]}
               locale={props.locale}
+              updateEntry={
+                item.catalogEntryId
+                  ? entryByCapability.get(item.catalogEntryId)
+                  : entryByCapability.get(item.capabilityId)
+              }
               onToggle={(target) => void actions.toggle(target)}
               onRemove={setRemoveTarget}
+              onUpdate={(entry, targetInstalled) =>
+                void actions.update(entry, targetInstalled)
+              }
             />
           ))}
         </div>
@@ -439,6 +462,8 @@ export function MarketplaceWorkspaceView(props: MarketplaceWorkspaceViewProps): 
         operation={openEntry ? actions.operations[openEntry.entryId] : undefined}
         locale={props.locale}
         onInstall={(entry) => void actions.install(entry)}
+        onUpdate={(entry, targetInstalled) => void actions.update(entry, targetInstalled)}
+        onRemove={setRemoveTarget}
         onUseExample={props.onUseExample}
         onClose={() => setOpenEntryId(null)}
       />

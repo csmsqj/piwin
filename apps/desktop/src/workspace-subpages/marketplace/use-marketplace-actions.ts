@@ -22,6 +22,7 @@ type Request = (command: HostCommand) => Promise<HostResponse>;
 export type MarketplaceActions = {
   operations: Readonly<Record<string, MarketOperation>>;
   install: (entry: MarketplaceCatalogEntry) => Promise<void>;
+  update: (entry: MarketplaceCatalogEntry, installed?: MarketplaceInstalledItem) => Promise<void>;
   remove: (item: MarketplaceInstalledItem) => Promise<void>;
   toggle: (item: MarketplaceInstalledItem) => Promise<void>;
 };
@@ -165,6 +166,93 @@ export function useMarketplaceActions(options: {
     });
   }
 
+  async function update(
+    entry: MarketplaceCatalogEntry,
+    installed?: MarketplaceInstalledItem,
+  ): Promise<void> {
+    const { request, sessionId, locale } = optionsRef.current;
+    const name = entry.name.en;
+    const descriptor = entry.install;
+    await run(entry.entryId, name, async (phase) => {
+      phase('updating');
+      switch (descriptor.kind) {
+        case 'pi-package': {
+          await send(request, { type: 'marketplace/package-install', source: descriptor.source });
+          phase('applying');
+          return describeExtensionChange(
+            name,
+            'updated',
+            await applyExtensionsToSession(request, sessionId),
+            locale,
+          );
+        }
+        case 'managed-extension': {
+          const res = (await send(request, {
+            type: 'extensions/install',
+            source: descriptor.source,
+            ...(descriptor.name ? { name: descriptor.name } : {}),
+          })) as { extensionId: string; configuredEnabled?: boolean };
+          if (installed?.enabled !== false && res.configuredEnabled !== true) {
+            phase('enabling');
+            await send(request, {
+              type: 'extensions/set_enabled',
+              extensionId: res.extensionId,
+              enabled: true,
+            });
+          }
+          phase('applying');
+          return describeExtensionChange(
+            name,
+            'updated',
+            await applyExtensionsToSession(request, sessionId),
+            locale,
+          );
+        }
+        case 'skill': {
+          await send(request, {
+            type: 'skills/install',
+            source: descriptor.source,
+            ...(descriptor.name ? { name: descriptor.name } : {}),
+          });
+          return {
+            type: 'success',
+            title: zh ? `[${name}] 已更新` : `[${name}] updated`,
+            text: zh ? '下一条消息起即可使用。' : 'Usable from your next message.',
+          };
+        }
+        case 'mcp': {
+          await send(request, {
+            type: 'mcp/registry-install-draft',
+            serverId: descriptor.serverId,
+            draft: descriptor.draft,
+          });
+          phase('starting');
+          const started = (await send(request, {
+            type: 'mcp/start',
+            serverId: descriptor.serverId,
+          })) as { health: McpServerHealth };
+          const health = started.health;
+          if (health.status === 'running' && !health.lastError) {
+            return {
+              type: 'success',
+              title: zh ? `[${name}] 已更新并连接` : `[${name}] updated & connected`,
+              text: zh
+                ? `发现 ${health.toolCount} 个工具。`
+                : `${health.toolCount} tools discovered.`,
+            };
+          }
+          return {
+            type: 'warning',
+            title: zh ? `[${name}] 已更新配置` : `[${name}] updated`,
+            text: zh
+              ? `但启动失败：${health.lastError ?? health.status}`
+              : `but it did not start: ${health.lastError ?? health.status}`,
+          };
+        }
+      }
+    });
+  }
+
   async function remove(item: MarketplaceInstalledItem): Promise<void> {
     const { request, sessionId, locale } = optionsRef.current;
     const route = item.removal;
@@ -176,6 +264,7 @@ export function useMarketplaceActions(options: {
           const data = (await send(request, {
             type: 'extensions/uninstall',
             extensionId: item.capabilityId,
+            ...(item.availability === 'pending-removal' ? { force: true } : {}),
           })) as ExtensionsUninstallData;
           phase('applying');
           const outcome = await applyExtensionsToSession(request, sessionId);
@@ -250,5 +339,5 @@ export function useMarketplaceActions(options: {
     });
   }
 
-  return { operations, install, remove, toggle };
+  return { operations, install, update, remove, toggle };
 }

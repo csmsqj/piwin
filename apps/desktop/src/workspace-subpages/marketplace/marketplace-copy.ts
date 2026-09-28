@@ -70,6 +70,7 @@ export function availabilityLabel(
 
 const OPERATION_LABELS: Record<MarketOperation, Pair> = {
   installing: ['Installing…', '安装中…'],
+  updating: ['Updating…', '更新中…'],
   enabling: ['Enabling…', '启用中…'],
   applying: ['Applying to session…', '同步到会话…'],
   starting: ['Connecting…', '连接中…'],

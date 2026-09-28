@@ -724,6 +724,15 @@ describe('MarketplaceWorkspaceView', () => {
 
     const featuredCards = featuredSection?.querySelectorAll('.market-card');
     expect(featuredCards?.length).toBe(5);
+    // One seal per kind, never a per-entry glyph or a Latin initial.
+    const seals = Array.from(featuredSection?.querySelectorAll('.market-card-mark') ?? []);
+    expect(seals.length).toBe(5);
+    const sealByKind: Record<string, string> = { extension: '器', skill: '法', mcp: '通' };
+    for (const seal of seals) {
+      const kind = Object.keys(sealByKind).find((name) => seal.classList.contains(`is-${name}`));
+      expect(kind).toBeDefined();
+      expect(seal.textContent).toBe(sealByKind[kind ?? '']);
+    }
 
     const ecosystemSection = container.querySelector('[data-testid="marketplace-ecosystem"]');
     if (ecosystemSection && featuredSection) {

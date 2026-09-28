@@ -3,7 +3,7 @@
  * (`canToggle`, `removal`); the row never infers them from the source label.
  */
 import type { ReactElement } from 'react';
-import type { MarketplaceInstalledItem, SkillSource } from '@piwin/contracts';
+import type { MarketplaceCatalogEntry, MarketplaceInstalledItem, SkillSource } from '@piwin/contracts';
 import { SKILL_SOURCE_DISPLAY_ORDER, resourceSourceLabel } from '@piwin/contracts';
 import { Button, ProgressRing } from '@piwin/ui-kit';
 import type { DesktopLocale } from '../../desktop-locale.js';
@@ -26,8 +26,10 @@ export type MarketplaceInstalledRowProps = {
   item: MarketplaceInstalledItem;
   operation: MarketOperation | undefined;
   locale?: DesktopLocale | undefined;
+  updateEntry?: MarketplaceCatalogEntry | undefined;
   onToggle: (item: MarketplaceInstalledItem) => void;
   onRemove: (item: MarketplaceInstalledItem) => void;
+  onUpdate?: ((entry: MarketplaceCatalogEntry, installed: MarketplaceInstalledItem) => void) | undefined;
 };
 
 export function MarketplaceInstalledRow(props: MarketplaceInstalledRowProps): ReactElement {
@@ -60,6 +62,19 @@ export function MarketplaceInstalledRow(props: MarketplaceInstalledRowProps): Re
           </span>
         ) : (
           <>
+            {props.updateEntry &&
+            props.updateEntry.version &&
+            item.version &&
+            props.updateEntry.version !== item.version &&
+            props.onUpdate ? (
+              <Button
+                variant="primary"
+                size="compact"
+                onClick={() => props.onUpdate?.(props.updateEntry!, item)}
+              >
+                {zh ? `更新至 v${props.updateEntry.version}` : `Update to v${props.updateEntry.version}`}
+              </Button>
+            ) : null}
             {item.canToggle && item.kind !== 'mcp' ? (
               <Button variant="ghost" size="compact" onClick={() => props.onToggle(item)}>
                 {item.enabled ? (zh ? '停用' : 'Disable') : zh ? '启用' : 'Enable'}

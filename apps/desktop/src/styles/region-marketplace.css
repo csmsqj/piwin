@@ -832,42 +832,7 @@ html:is([data-theme-id='piwin-inkstone-paper'], [data-theme-id='piwin-inkstone-i
   padding-bottom: 8px;
 }
 
-.market-detail-section {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 14px;
-}
-
-.market-detail-section h4 {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-2);
-}
-
-.market-detail-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font-size: 12.5px;
-  color: var(--text-2);
-}
-
-.market-detail-list li {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 3px;
-}
-
-.market-detail-example {
-  font-style: italic;
-  color: var(--text-1);
-}
+/* Entry detail dialog lives in region-marketplace-entry-dialog.css. */
 
 /* Install progress sits between the card body and its footer. */
 .market-card-progress {
