@@ -81,7 +81,7 @@ describe('auth commands', () => {
     const { port } = fakePort();
     const config: PiwinConfig = createDefaultPiwinConfig();
     const service = new SubscriptionAuthService(
-      { port },
+      { port, piwinRoot: '/tmp/test-piwin-auth-commands' },
       { loadConfig: async () => config, saveConfig: async () => undefined },
     );
     const ctx = context(service, []);

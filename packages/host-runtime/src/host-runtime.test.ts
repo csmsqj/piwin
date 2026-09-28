@@ -31,6 +31,8 @@ describe('HostRuntime', () => {
     const runtime = new HostRuntime({
       mode: 'sdk',
       mock: true,
+      // Explicit root: session/create persists index rows and transcripts.
+      piwinRoot: await mkdtemp(join(tmpdir(), 'piwin-host-multi-sink-')),
       onPush: (message) => {
         legacyPushes.push(message.type);
       },
@@ -104,6 +106,7 @@ describe('HostRuntime', () => {
     const runtime = new HostRuntime({
       mode: 'sdk',
       mock: true,
+      piwinRoot: await mkdtemp(join(tmpdir(), 'piwin-host-ping-prompt-')),
       onPush: (message) => {
         pushes.push(message.type);
       },
@@ -1939,7 +1942,11 @@ describe('HostRuntime', () => {
   });
 
   it('protects sessions by pending permission and Extension UI value session ids', async () => {
-    const runtime = new HostRuntime({ mode: 'sdk', mock: true });
+    const runtime = new HostRuntime({
+      mode: 'sdk',
+      mock: true,
+      piwinRoot: await mkdtemp(join(tmpdir(), 'piwin-host-protect-')),
+    });
     const internals = runtime as unknown as {
       isSessionRuntimeProtected: (sessionId: string) => boolean;
       pendingPermissions: Map<string, { sessionId: string }>;

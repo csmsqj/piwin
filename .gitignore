@@ -16,6 +16,7 @@ private_keys/
 apps/desktop/src-tauri/target/
 coverage/
 .vite/
+.wrangler/
 *.tsbuildinfo
 .piwin-local/
 .vscode/*
