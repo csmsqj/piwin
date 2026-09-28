@@ -312,6 +312,9 @@ async function extractErrorMessage(response: Response): Promise<string> {
         return text.slice(0, 160);
       }
     }
-  } catch {}
+  } catch {
+    // Response body is unreadable (non-UTF-8 or truncated): fall through to
+    // the generic HTTP status line below.
+  }
   return `HTTP ${response.status} ${response.statusText || 'request rejected'}`;
 }
