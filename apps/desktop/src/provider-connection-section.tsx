@@ -82,7 +82,8 @@ export function ProviderConnectionPanel(props: ProviderConnectionPanelProps): Re
         // Saved headers or an env-var key are real config worth showing; a
         // new preset's placeholder env name is not.
         defaultAdvancedOpen={
-          !isNew && (draft.headerRows.length > 0 || draft.storedApiKeyEnv.trim().length > 0)
+          draft.chatApi === 'openai-responses' ||
+          (!isNew && (draft.headerRows.length > 0 || draft.storedApiKeyEnv.trim().length > 0))
         }
         isChinese={isChinese}
         saving={props.saving}

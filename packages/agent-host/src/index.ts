@@ -33,6 +33,7 @@ export {
   resetModelCatalogSnapshot,
   searchPiCatalog,
   searchPiImagesCatalog,
+  stripModelEffortOrVariantSuffix,
 } from './model-catalog-reader.js';
 export type { ModelCatalogSnapshot } from './model-catalog-reader.js';
 

@@ -1,13 +1,26 @@
 /**
  * Sends the smallest valid generation request for one configured model.
- * This tests the endpoint, credentials, custom headers, and model identifier
- * together; it intentionally does not use the provider's `/models` endpoint.
+ * This tests the endpoint, credentials, custom headers, model identifier, and
+ * chat transport together; it intentionally does not use the provider's
+ * `/models` endpoint. The URL comes from `provider-endpoint.ts`, so a passing
+ * test means Pi's runtime request goes to the same place.
  */
-import type { ModelProviderConfig } from '@piwin/contracts'
-import { formatError } from '@piwin/contracts';;
-import { ProviderModelDiscoveryError, buildProviderRequestHeaders } from './provider-model-discovery.js';
+import type { ModelProviderConfig, ProviderChatApi } from '@piwin/contracts';
+import { formatError } from '@piwin/contracts';
+import {
+  ProviderModelDiscoveryError,
+  buildProviderRequestHeaders,
+} from './provider-model-discovery.js';
+import {
+  ProviderEndpointError,
+  resolveEffectiveChatApi,
+  resolveProviderChatEndpoint,
+} from './provider-endpoint.js';
+import { formatProviderHttpFailure } from './provider-http-failure.js';
 
 const MODEL_TEST_TIMEOUT_MS = 20_000;
+/** OpenAI Responses rejects `max_output_tokens` below 16. */
+const RESPONSES_MIN_OUTPUT_TOKENS = 16;
 
 export type ProviderModelTestDependencies = {
   fetch?: typeof globalThis.fetch;
@@ -18,6 +31,10 @@ export type ProviderModelTestResult = {
   providerId: string;
   modelId: string;
   durationMs: number;
+  /** Transport the probe used; mirrors the Pi runtime for this provider. */
+  chatApi: ProviderChatApi;
+  /** Exact URL the probe POSTed to (no secrets: auth travels in headers). */
+  endpoint: string;
 };
 
 export async function testProviderModel(
@@ -35,7 +52,8 @@ export async function testProviderModel(
     throw new ProviderModelDiscoveryError('Model test is unavailable: fetch is not supported');
   }
 
-  const request = buildModelTestRequest(provider, normalizedModelId);
+  const chatApi = resolveEffectiveChatApi(provider);
+  const request = buildModelTestRequest(provider, normalizedModelId, chatApi);
   const headers = await buildProviderRequestHeaders(provider, dependencies.resolveSecret);
   headers.set('content-type', 'application/json');
 
@@ -52,23 +70,28 @@ export async function testProviderModel(
     });
     if (!response.ok) {
       throw new ProviderModelDiscoveryError(
-        `Model test failed (${response.status} ${response.statusText || 'request rejected'})`,
+        `Model test failed (${await formatProviderHttpFailure(response)})`,
+        { kind: 'http', httpStatus: response.status },
       );
     }
     return {
       providerId: provider.id,
       modelId: normalizedModelId,
       durationMs: Date.now() - startedAt,
+      chatApi,
+      endpoint: request.endpoint,
     };
   } catch (error) {
     if (error instanceof ProviderModelDiscoveryError) {
       throw error;
     }
     if (abortController.signal.aborted) {
-      throw new ProviderModelDiscoveryError('Model test timed out after 20 seconds');
+      throw new ProviderModelDiscoveryError('Model test timed out after 20 seconds', {
+        kind: 'timeout',
+      });
     }
     const message = formatError(error);
-    throw new ProviderModelDiscoveryError(`Model test failed: ${message}`);
+    throw new ProviderModelDiscoveryError(`Model test failed: ${message}`, { kind: 'network' });
   } finally {
     clearTimeout(timeout);
   }
@@ -77,44 +100,55 @@ export async function testProviderModel(
 function buildModelTestRequest(
   provider: ModelProviderConfig,
   modelId: string,
+  chatApi: ProviderChatApi,
 ): { endpoint: string; body: Record<string, unknown> } {
-  const baseUrl = provider.baseUrl.trim().replace(/\/+$/, '');
-  if (!baseUrl) {
-    throw new ProviderModelDiscoveryError('Model test requires a Base URL');
+  let endpoint: string;
+  try {
+    endpoint = resolveProviderChatEndpoint(provider, modelId, chatApi);
+  } catch (error) {
+    if (error instanceof ProviderEndpointError) {
+      throw new ProviderModelDiscoveryError(`Model test: ${error.message}`);
+    }
+    throw error;
   }
 
-  if (provider.protocol === 'google-gemini') {
-    return {
-      endpoint: `${baseUrl}/models/${encodeURIComponent(modelId)}:generateContent`,
-      body: {
-        contents: [{ role: 'user', parts: [{ text: 'ping' }] }],
-        generationConfig: { maxOutputTokens: 1 },
-      },
-    };
+  switch (chatApi) {
+    case 'google-generative-ai':
+      return {
+        endpoint,
+        body: {
+          contents: [{ role: 'user', parts: [{ text: 'ping' }] }],
+          generationConfig: { maxOutputTokens: 1 },
+        },
+      };
+    case 'anthropic-messages':
+      return {
+        endpoint,
+        body: {
+          model: modelId,
+          max_tokens: 1,
+          messages: [{ role: 'user', content: 'ping' }],
+        },
+      };
+    case 'openai-responses':
+      return {
+        endpoint,
+        body: {
+          model: modelId,
+          input: 'ping',
+          max_output_tokens: RESPONSES_MIN_OUTPUT_TOKENS,
+          stream: false,
+        },
+      };
+    case 'openai-completions':
+      return {
+        endpoint,
+        body: {
+          model: modelId,
+          messages: [{ role: 'user', content: 'ping' }],
+          max_tokens: 1,
+          stream: false,
+        },
+      };
   }
-
-  if (provider.protocol === 'anthropic-compatible') {
-    const endpoint = baseUrl.endsWith('/v1') ? `${baseUrl}/messages` : `${baseUrl}/v1/messages`;
-    return {
-      endpoint,
-      body: {
-        model: modelId,
-        max_tokens: 1,
-        messages: [{ role: 'user', content: 'ping' }],
-      },
-    };
-  }
-
-  const endpoint = baseUrl.endsWith('/v1')
-    ? `${baseUrl}/chat/completions`
-    : `${baseUrl}/v1/chat/completions`;
-  return {
-    endpoint,
-    body: {
-      model: modelId,
-      messages: [{ role: 'user', content: 'ping' }],
-      max_tokens: 1,
-      stream: false,
-    },
-  };
 }

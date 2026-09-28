@@ -33,6 +33,7 @@ export function buildSearchRoutePreview(
     adapter: resolveNativeSearchAdapterSupport(
       configured?.provider.protocol,
       configured?.model.nativeSearchAdapter,
+      configured?.provider.chatApi,
     ),
     externalDelegateReady: Boolean(findReadyWebSearchDelegate(config, input.searchDelegateModel)),
   });

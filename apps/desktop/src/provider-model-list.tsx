@@ -19,6 +19,7 @@ import {
   DropdownMenuSeparator,
   IconButton,
   Switch,
+  ModelFallbackIcon,
   ProviderIcon,
   resolveModelBrandKey,
 } from '@piwin/ui-kit';
@@ -31,7 +32,7 @@ import {
   type ModelConfigurationDraft,
 } from './model-configuration.js';
 import { ModelEditInline } from './model-edit-inline.js';
-import { ProviderAvatar } from './provider-avatar.js';
+import { isCustomChannelId } from './provider-avatar.js';
 import {
   IconChevronDown,
   IconDownload,
@@ -297,11 +298,16 @@ export function ProviderModelList({
               >
                 <span className="pmodel-glyph" aria-hidden="true">
                   {/* The model's own vendor (from its id) — the same brand chip the
-                      image and video lists use; else the provider's own mark. */}
+                      image and video lists use; else a branded provider's mark; else
+                      the neutral model mark (never the channel's letter seal, which
+                      would read as the model's logo). Custom channels skip the
+                      provider step: their id resolves to the protocol vendor. */}
                   {modelBrand ? (
                     <ProviderIcon id={modelBrand} name={label} size={30} />
+                  ) : isCustomChannelId(provider.id) ? (
+                    <ModelFallbackIcon providerId={provider.id} size={30} />
                   ) : (
-                    <ProviderAvatar id={provider.id} name={provider.name} size={30} />
+                    <ProviderIcon id={provider.id} name={provider.name} size={30} fallback="model" />
                   )}
                 </span>
                 <div className="pmodel-who">

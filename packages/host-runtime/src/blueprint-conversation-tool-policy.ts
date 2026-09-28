@@ -49,6 +49,7 @@ export function compileConversationToolPolicy(
   const searchAdapter = resolveNativeSearchAdapterSupport(
     configuredModel?.provider.protocol,
     configuredModel?.model.nativeSearchAdapter,
+    configuredModel?.provider.chatApi,
   );
   const webForRoute = resolvedWebConfig
     ? webConfigWithDuckDuckGoFloor(resolvedWebConfig, {

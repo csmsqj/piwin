@@ -117,6 +117,7 @@ function createContextValue(
     onPetActiveChanged: vi.fn(),
     discoverProviderModels: vi.fn(),
     testProviderModel: vi.fn(),
+    testProviderConnection: vi.fn(),
     searchModelCatalog: vi.fn(),
     searchImageModelCatalog: vi.fn(),
     getModelCatalogStatus: vi.fn(async () => ({

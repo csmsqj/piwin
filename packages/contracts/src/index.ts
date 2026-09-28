@@ -22,6 +22,7 @@ export * from './live-delegation-instruction.js';
 export * from './live-delegation-review.js';
 export * from './live-session-context.js';
 export * from './provider-auth.js';
+export * from './provider-connection-test.js';
 export * from './image-generation.js';
 export * from './vision-delegation.js';
 export * from './code-search.js';

@@ -38,6 +38,7 @@ export type SessionToolCardView = {
   runId?: string;
   /** Assistant response that emitted this tool when available. */
   responseMessageId?: string;
+  /** Includes bounded native-search diagnostics when supplied by the AgentEvent. */
   presentation?: ToolPresentation;
 };
 
@@ -76,6 +77,7 @@ export type SessionTranscriptMessage = {
   agentStopReason?: AgentPromptStopReason;
   thinking?: string;
   tools?: SessionToolCardView[];
+  /** Native/external citations plus bounded native diagnostic metadata. */
   searchEvidence?: SearchEvidence;
   attachments?: MediaAttachmentRef[];
   /** When set, UI renders a SubagentActivityCard instead of plain system text. */

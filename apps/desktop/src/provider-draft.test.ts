@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  chatApiChoicesForProtocol,
   draftToProvider,
   isConnectionDirty,
   mergeConnectionDraft,
@@ -101,6 +102,32 @@ describe('provider-draft', () => {
     // Legacy configs carry both refs; the draft drops the env one, which is not an edit.
     const legacy = makeProvider({ id: 'b', apiKeyRef: 'ref-2', apiKeyEnv: 'OLD_ENV' });
     expect(isConnectionDirty(providerToDraft(legacy), legacy)).toBe(false);
+  });
+
+  it('round-trips chatApi and treats an explicit default as unchanged', () => {
+    const responses = makeProvider({ id: 'r', chatApi: 'openai-responses' });
+    const draft = providerToDraft(responses);
+    expect(draft.chatApi).toBe('openai-responses');
+    expect(draftToProvider(draft).chatApi).toBe('openai-responses');
+    expect(isConnectionDirty(draft, responses)).toBe(false);
+    expect(isConnectionDirty({ ...draft, chatApi: 'openai-completions' }, responses)).toBe(true);
+
+    // Legacy rows omit chatApi; picking Chat Completions explicitly is not an edit.
+    const legacy = makeProvider({ id: 'l' });
+    expect(draftToProvider(providerToDraft(legacy))).not.toHaveProperty('chatApi');
+    expect(
+      isConnectionDirty({ ...providerToDraft(legacy), chatApi: 'openai-completions' }, legacy),
+    ).toBe(false);
+  });
+
+  it('drops a chatApi an OpenAI row cannot use', () => {
+    const draft = { ...providerToDraft(makeProvider({ id: 'x' })), chatApi: 'anthropic-messages' as const };
+    expect(draftToProvider(draft)).not.toHaveProperty('chatApi');
+    expect(chatApiChoicesForProtocol('openai-compatible')).toEqual([
+      'openai-completions',
+      'openai-responses',
+    ]);
+    expect(chatApiChoicesForProtocol('anthropic-compatible')).toEqual([]);
   });
 
   it('merges a connection draft onto the current models and enable state', () => {

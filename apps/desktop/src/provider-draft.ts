@@ -9,8 +9,9 @@ import type {
   ModelProviderConfig,
   ModelSource,
   PiwinConfig,
+  ProviderChatApi,
 } from '@piwin/contracts';
-import { isModelEnabled } from '@piwin/contracts';
+import { isModelEnabled, resolveProviderChatApi } from '@piwin/contracts';
 import type { ProviderProtocol } from './provider-presets.js';
 
 export type HeaderDraftRow = {
@@ -40,6 +41,11 @@ export type ProviderDraft = {
   /** Saved keychain ref from config (if any). */
   storedApiKeyRef: string;
   headerRows: HeaderDraftRow[];
+  /**
+   * Pi chat transport for OpenAI-compatible rows. Omitted keeps the legacy
+   * default (Chat Completions); only `openai-responses` is written back.
+   */
+  chatApi?: ProviderChatApi;
   models: ModelConfigEntry[];
 };
 
@@ -87,6 +93,7 @@ export function providerToDraft(provider: ModelProviderConfig): ProviderDraft {
     storedApiKeyEnv: provider.apiKeyRef?.trim() ? '' : (provider.apiKeyEnv ?? ''),
     storedApiKeyRef: provider.apiKeyRef ?? '',
     headerRows: headersToRows(provider.headers),
+    ...(provider.chatApi ? { chatApi: provider.chatApi } : {}),
     models: provider.models,
   };
 }
@@ -109,6 +116,10 @@ export function draftToProvider(draft: ProviderDraft): ModelProviderConfig {
   const headers = rowsToHeaders(draft.headerRows);
   if (headers) {
     config.headers = headers;
+  }
+  const chatApi = normalizeDraftChatApi(draft);
+  if (chatApi) {
+    config.chatApi = chatApi;
   }
   if (draft.storedApiKeyRef) {
     config.apiKeyRef = draft.storedApiKeyRef;
@@ -165,6 +176,28 @@ export function pendingApiKey(draft: ProviderDraft): string {
   return typed === draft.revealedApiKey?.trim() ? '' : typed;
 }
 
+/** Chat transport choices offered for a protocol (only OpenAI-compatible has two). */
+export function chatApiChoicesForProtocol(protocol: ProviderProtocol): readonly ProviderChatApi[] {
+  return protocol === 'openai-compatible' ? ['openai-completions', 'openai-responses'] : [];
+}
+
+/** Effective transport shown in the editor (explicit value or protocol default). */
+export function draftChatApi(draft: Pick<ProviderDraft, 'protocol' | 'chatApi'>): ProviderChatApi {
+  return resolveProviderChatApi(draft);
+}
+
+/**
+ * Transport to persist. Unknown values for an OpenAI row are dropped so the
+ * Host default applies; other protocols keep whatever an older config stored.
+ */
+function normalizeDraftChatApi(draft: ProviderDraft): ProviderChatApi | undefined {
+  if (!draft.chatApi) return undefined;
+  if (draft.protocol !== 'openai-compatible') return draft.chatApi;
+  return chatApiChoicesForProtocol(draft.protocol).includes(draft.chatApi)
+    ? draft.chatApi
+    : undefined;
+}
+
 function connectionSignature(provider: ModelProviderConfig): string {
   const headers = Object.entries(provider.headers ?? {}).sort(([left], [right]) =>
     left.localeCompare(right),
@@ -175,6 +208,8 @@ function connectionSignature(provider: ModelProviderConfig): string {
     provider.apiKeyRef ?? '',
     provider.apiKeyEnv ?? '',
     headers,
+    // Resolved, so an explicit default and an omitted field compare equal.
+    resolveProviderChatApi(provider),
   ]);
 }
 

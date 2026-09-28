@@ -96,6 +96,7 @@ function createContextValue(config: PiwinConfig): SettingsContextValue {
     onPetActiveChanged: vi.fn(),
     discoverProviderModels: vi.fn(async () => ({ models: [] })),
     testProviderModel: vi.fn(async () => ({ durationMs: 1 })),
+    testProviderConnection: vi.fn(),
     searchModelCatalog: vi.fn(async () => ({ items: [] })),
     getModelCatalogStatus: vi.fn(async () => ({
       source: 'pi-bootstrap' as const,

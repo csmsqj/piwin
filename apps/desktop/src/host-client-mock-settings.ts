@@ -260,6 +260,33 @@ export async function handleMockSettingsCommands(
           },
         };
       }
+      case 'models/test-connection': {
+        const modelId = command.modelId ?? command.provider.models[0]?.id;
+        return {
+          id,
+          type: 'response',
+          command: 'models/test-connection',
+          success: true,
+          data: modelId
+            ? {
+                providerId: command.provider.id,
+                protocol: command.provider.protocol,
+                outcome: 'chat-ok',
+                method: 'model-test',
+                modelId,
+                durationMs: 42,
+              }
+            : {
+                providerId: command.provider.id,
+                protocol: command.provider.protocol,
+                outcome: 'catalog-ok',
+                method: 'discovery',
+                // Mirrors the mock `models/discover` catalog size.
+                modelCount: command.provider.protocol === 'openai-compatible' ? 3 : 2,
+                durationMs: 42,
+              },
+        };
+      }
       case 'models/image-test': {
         return {
           id,

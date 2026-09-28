@@ -9,11 +9,11 @@ import {
   type NativeSearchModelFlags,
   type NativeSearchStreamSimple,
 } from './native-web-search.js';
-import { resolvePiNativeSearchStream } from './pi-native-search-stream.js';
+import { resolvePiNativeSearchStream, type PiNativeSearchApi } from './pi-native-search-stream.js';
 import { wrapStreamSimpleForRequestTiming } from './stream-request-timing.js';
 
 export function resolveProviderStreamSimple(input: {
-  api: 'openai-completions' | 'anthropic-messages' | 'google-generative-ai';
+  api: PiNativeSearchApi;
   models: readonly NativeSearchModelFlags[];
   searchRoute?: ResolvedSearchRoute | null;
   streamSimple?: NativeSearchStreamSimple;

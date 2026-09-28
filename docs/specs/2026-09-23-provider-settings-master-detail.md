@@ -70,6 +70,14 @@ the list to half the page, and model rows carried four unlabeled icon buttons.
 - **Rail**: search + add at the top; custom providers first, then OAuth
   packages; each item shows icon, name, host, model count and a status dot
   (off / on / last test failed). Disabled providers stay in place, dimmed.
+- **Test connection chats, it does not list models** (ADR 0078). It calls
+  `models/test-connection`: a minimal generation request to the first enabled
+  chat model through the same URL/transport Pi uses, or — with no model yet —
+  catalog discovery. An endpoint without `/models` is an amber warning ("add
+  model IDs manually"), never the red "last test failed".
+- **Advanced → Chat API** (OpenAI-compatible only): Chat Completions or
+  Responses; the hint shows the resulting `{API}/chat/completions` or
+  `{API}/responses` URL.
 - **Connection edits are a draft.** Fields edit a local draft; a save bar
   appears only when the draft differs from the saved provider. Switching
   providers with unsaved edits asks first. Revealing the saved key (eye) fills

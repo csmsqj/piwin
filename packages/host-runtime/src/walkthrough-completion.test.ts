@@ -111,17 +111,22 @@ describe('completeWalkthrough — OpenAI-compatible', () => {
     expect(result.text).toBe('# Walkthrough\n\nDid the thing.');
   });
 
-  it('appends /v1 when the base URL does not end with /v1', async () => {
-    let requestedUrl = '';
+  it('joins the base URL verbatim like Pi (no /v1 inserted, other versions kept)', async () => {
+    const requestedUrls: string[] = [];
     const fetchSpy = createFetchSpy((_input) => {
-      requestedUrl = String(_input);
+      requestedUrls.push(String(_input));
       return createJsonResponse({ choices: [{ message: { content: 'ok' } }] });
     });
-    await completeWalkthrough(
-      createRequest({ provider: createProvider({ baseUrl: 'https://api.example.com' }) }),
-      { fetch: fetchSpy, resolveSecret: async () => 'k' },
-    );
-    expect(requestedUrl).toBe('https://api.example.com/v1/chat/completions');
+    for (const baseUrl of ['https://api.example.com', 'https://ark.cn-beijing.volces.com/api/plan/v3']) {
+      await completeWalkthrough(createRequest({ provider: createProvider({ baseUrl }) }), {
+        fetch: fetchSpy,
+        resolveSecret: async () => 'k',
+      });
+    }
+    expect(requestedUrls).toEqual([
+      'https://api.example.com/chat/completions',
+      'https://ark.cn-beijing.volces.com/api/plan/v3/chat/completions',
+    ]);
   });
 
   it('strips trailing slashes from the base URL', async () => {
@@ -163,7 +168,8 @@ describe('completeWalkthrough — Anthropic-compatible', () => {
       createRequest({
         provider: createProvider({
           protocol: 'anthropic-compatible',
-          baseUrl: 'https://api.anthropic.com/v1',
+          // Anthropic SDK convention (what Pi uses): base without /v1.
+          baseUrl: 'https://api.anthropic.com',
           apiKeyRef: 'keychain:anthropic',
         }),
       }),
@@ -184,7 +190,7 @@ describe('completeWalkthrough — Anthropic-compatible', () => {
     expect(result.text).toBe('## Walkthrough\n\nSteps here.');
   });
 
-  it('appends /v1 when the base URL does not end with /v1', async () => {
+  it('always appends the SDK path /v1/messages, like the Anthropic SDK Pi uses', async () => {
     let requestedUrl = '';
     const fetchSpy = createFetchSpy((_input) => {
       requestedUrl = String(_input);
@@ -194,12 +200,12 @@ describe('completeWalkthrough — Anthropic-compatible', () => {
       createRequest({
         provider: createProvider({
           protocol: 'anthropic-compatible',
-          baseUrl: 'https://api.anthropic.com',
+          baseUrl: 'https://open.bigmodel.cn/api/anthropic',
         }),
       }),
       { fetch: fetchSpy, resolveSecret: async () => 'k' },
     );
-    expect(requestedUrl).toBe('https://api.anthropic.com/v1/messages');
+    expect(requestedUrl).toBe('https://open.bigmodel.cn/api/anthropic/v1/messages');
   });
 });
 

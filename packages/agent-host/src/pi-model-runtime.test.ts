@@ -13,6 +13,40 @@ describe('pi-model-runtime', () => {
     expect(resolvePiApiForProvider('google-gemini')).toBe('google-generative-ai');
   });
 
+  it('honours chatApi openai-responses only on OpenAI-compatible rows', () => {
+    expect(resolvePiApiForProvider('openai-compatible', 'openai-responses')).toBe(
+      'openai-responses',
+    );
+    expect(resolvePiApiForProvider(undefined, 'openai-responses')).toBe('openai-responses');
+    expect(resolvePiApiForProvider('anthropic-compatible', 'openai-responses')).toBe(
+      'anthropic-messages',
+    );
+    expect(resolvePiApiForProvider('openai-compatible', 'openai-completions')).toBe(
+      'openai-completions',
+    );
+  });
+
+  it('registers Responses providers on the Pi openai-responses API', () => {
+    const registration = buildPiProviderRegistration(
+      {
+        id: 'ark-plan',
+        name: 'Ark Agent Plan',
+        protocol: 'openai-compatible',
+        chatApi: 'openai-responses',
+        baseUrl: 'https://ark.cn-beijing.volces.com/api/plan/v3',
+        models: [{ id: 'doubao-seed-2.0-pro' }],
+      },
+      'secret',
+    );
+    expect(registration.api).toBe('openai-responses');
+    expect(registration.models[0]).toMatchObject({
+      api: 'openai-responses',
+      baseUrl: 'https://ark.cn-beijing.volces.com/api/plan/v3',
+    });
+    expect(registration.models[0]).not.toHaveProperty('compat');
+    expect(registration.streamSimple).toBeTypeOf('function');
+  });
+
   it('adds DeepSeek compat for OpenAI-channel models only', () => {
     const openAiProvider: ModelProviderConfig = {
       id: 'local-gateway',
@@ -39,8 +73,9 @@ describe('pi-model-runtime', () => {
     );
     expect(openAiRegistration.models[2]).not.toHaveProperty('compat');
 
+    const { chatApi: _chatApi1, ...baseProvider1 } = openAiProvider;
     const anthropicRegistration = buildPiProviderRegistration({
-      ...openAiProvider,
+      ...baseProvider1,
       protocol: 'anthropic-compatible',
     });
     expect(anthropicRegistration.models[0]).not.toHaveProperty('compat');
@@ -65,8 +100,9 @@ describe('pi-model-runtime', () => {
     expect(openAiRegistration.models[1]?.compat).toEqual(grokCompat);
     expect(openAiRegistration.models[2]).not.toHaveProperty('compat');
 
+    const { chatApi: _chatApi2, ...baseProvider2 } = openAiProvider;
     const anthropicRegistration = buildPiProviderRegistration({
-      ...openAiProvider,
+      ...baseProvider2,
       protocol: 'anthropic-compatible',
     });
     expect(anthropicRegistration.models[0]).not.toHaveProperty('compat');

@@ -7,6 +7,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   ModelDiscoveryResult,
   ModelProviderConfig,
+  ProviderConnectionTestResult,
   PiwinConfig,
   HostStatusData,
   ImageGenerationTestResult,
@@ -396,6 +397,25 @@ export const SettingsPanel = memo(function SettingsPanel({
     [request],
   );
 
+  const testProviderConnection = useCallback(
+    async (
+      provider: ModelProviderConfig,
+      options?: { apiKey?: string; modelId?: string },
+    ): Promise<ProviderConnectionTestResult> => {
+      const response = await request({
+        type: 'models/test-connection',
+        provider,
+        ...(options?.apiKey ? { apiKey: options.apiKey } : {}),
+        ...(options?.modelId ? { modelId: options.modelId } : {}),
+      });
+      if (!response.success) {
+        throw new Error(response.error);
+      }
+      return response.data as ProviderConnectionTestResult;
+    },
+    [request],
+  );
+
   const testImageGenerationModel = useCallback(
     async (
       provider: ModelProviderConfig,
@@ -599,6 +619,7 @@ export const SettingsPanel = memo(function SettingsPanel({
       onPetActiveChanged,
       discoverProviderModels,
       testProviderModel,
+      testProviderConnection,
       testImageGenerationModel,
       searchModelCatalog,
       searchImageModelCatalog,
@@ -644,6 +665,7 @@ export const SettingsPanel = memo(function SettingsPanel({
       onPetActiveChanged,
       discoverProviderModels,
       testProviderModel,
+      testProviderConnection,
       testImageGenerationModel,
       searchModelCatalog,
       searchImageModelCatalog,

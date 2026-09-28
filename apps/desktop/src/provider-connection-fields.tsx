@@ -1,12 +1,18 @@
 /**
  * Connection section of the provider detail pane: name, API key (reveal +
- * test), address, and the advanced fold (env var, request headers). Edits a
+ * test), address, and the advanced fold (chat API, env var, request headers). Edits a
  * draft only; the detail pane owns save / revert.
  */
 
 import { useId, useState, type ReactElement, type ReactNode } from 'react';
-import { Button, IconButton, TextInput } from '@piwin/ui-kit';
-import { createHeaderRow, hasKeychainSecret, type ProviderDraft } from './provider-draft.js';
+import { Button, IconButton, SegmentedControl, TextInput } from '@piwin/ui-kit';
+import {
+  chatApiChoicesForProtocol,
+  createHeaderRow,
+  draftChatApi,
+  hasKeychainSecret,
+  type ProviderDraft,
+} from './provider-draft.js';
 import {
   IconChevronRight,
   IconClose,
@@ -71,6 +77,12 @@ function FieldRow(props: {
       </div>
     </div>
   );
+}
+
+/** `{API address}/chat/completions` or `/responses`, verbatim like Pi joins it. */
+function chatApiPathHint(draft: ProviderDraft): string {
+  const base = draft.baseUrl.trim().replace(/\/+$/, '') || '{API}';
+  return draftChatApi(draft) === 'openai-responses' ? `${base}/responses` : `${base}/chat/completions`;
 }
 
 export function ProviderConnectionFields({
@@ -221,6 +233,32 @@ export function ProviderConnectionFields({
 
       {advancedOpen ? (
         <div className="pconn-advanced-body" data-testid="provider-headers">
+          {chatApiChoicesForProtocol(draft.protocol).length > 1 ? (
+            <FieldRow
+              label={isChinese ? '对话协议' : 'Chat API'}
+              hint={
+                isChinese
+                  ? `对话请求发往 ${chatApiPathHint(draft)}。多数兼容接口用 Chat Completions；只提供 Responses 的服务选 Responses。`
+                  : `Chat requests go to ${chatApiPathHint(draft)}. Most compatible endpoints use Chat Completions; pick Responses for providers that only serve it.`
+              }
+            >
+              <SegmentedControl
+                testId="provider-chat-api"
+                value={draftChatApi(draft)}
+                disabled={saving}
+                onChange={(value) =>
+                  onDraftChange({
+                    ...draft,
+                    chatApi: value === 'openai-responses' ? 'openai-responses' : 'openai-completions',
+                  })
+                }
+                data={[
+                  { value: 'openai-completions', label: 'Chat Completions' },
+                  { value: 'openai-responses', label: 'Responses' },
+                ]}
+              />
+            </FieldRow>
+          ) : null}
           <FieldRow
             label={copy.apiKeyEnvironment}
             htmlFor={`${fieldId}-env`}

@@ -538,6 +538,8 @@ export type ToolPresentation = {
   knowledge?: import('./knowledge-base.js').KnowledgeToolDetails;
   /** Per-source outcome of a `web_search` call, lifted from its details. */
   webSearch?: import('./web.js').WebSearchDiagnostics;
+  /** Bounded provider-native search facts; excludes query/prompt/header/body data. */
+  nativeSearch?: import('./web.js').NativeSearchDiagnostic;
   /** Message-bound saved plan snapshot used by the Desktop plan card. */
   plan?: import('./plan-display.js').PlanDisplayPayload;
   startedAt?: string;

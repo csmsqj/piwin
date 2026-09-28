@@ -17,6 +17,7 @@ import type {
 import { formatTextModelImageInjection } from '@piwin/contracts';
 import { findEnabledProvider, resolveDefaultModelRef } from './provider-helpers.js';
 import { buildProviderRequestHeaders } from './provider-model-discovery.js';
+import { resolveProviderChatEndpoint } from './provider-endpoint.js';
 
 export const DEFAULT_VISION_DELEGATION_SYSTEM_PROMPT =
   'Describe this image factually for a coding agent. Transcribe visible text, code, logs, and error messages verbatim, and summarize key UI layout or diagram relationships.';
@@ -165,7 +166,8 @@ async function describeOpenAiCompatible(params: {
   signal: AbortSignal;
   fetchImpl: typeof fetch;
 }): Promise<string> {
-  const url = buildOpenAiCompatibleChatCompletionsUrl(params.provider.baseUrl);
+  // The image body is Chat Completions shaped regardless of the chat transport.
+  const url = resolveProviderChatEndpoint(params.provider, params.modelId, 'openai-completions');
   const headers = await buildProviderRequestHeaders(params.provider, async () => params.apiKey);
   headers.set('content-type', 'application/json');
   const response = await params.fetchImpl(url, {
@@ -215,7 +217,7 @@ async function describeAnthropicCompatible(params: {
   signal: AbortSignal;
   fetchImpl: typeof fetch;
 }): Promise<string> {
-  const url = buildAnthropicMessagesUrl(params.provider.baseUrl);
+  const url = resolveProviderChatEndpoint(params.provider, params.modelId, 'anthropic-messages');
   const headers = await buildProviderRequestHeaders(params.provider, async () => params.apiKey);
   headers.set('content-type', 'application/json');
   const response = await params.fetchImpl(url, {
@@ -267,8 +269,7 @@ async function describeGoogleGemini(params: {
   signal: AbortSignal;
   fetchImpl: typeof fetch;
 }): Promise<string> {
-  const base = params.provider.baseUrl.replace(/\/+$/, '');
-  const url = `${base}/models/${encodeURIComponent(params.modelId)}:generateContent`;
+  const url = resolveProviderChatEndpoint(params.provider, params.modelId, 'google-generative-ai');
   const headers = await buildProviderRequestHeaders(params.provider, async () => params.apiKey);
   headers.set('content-type', 'application/json');
   const response = await params.fetchImpl(url, {
@@ -303,20 +304,6 @@ async function describeGoogleGemini(params: {
     throw new Error('vision delegation returned empty description');
   }
   return text;
-}
-
-function buildOpenAiCompatibleChatCompletionsUrl(baseUrl: string): string {
-  const normalizedBaseUrl = baseUrl.trim().replace(/\/+$/, '');
-  return normalizedBaseUrl.endsWith('/v1')
-    ? `${normalizedBaseUrl}/chat/completions`
-    : `${normalizedBaseUrl}/v1/chat/completions`;
-}
-
-function buildAnthropicMessagesUrl(baseUrl: string): string {
-  const normalizedBaseUrl = baseUrl.trim().replace(/\/+$/, '');
-  return normalizedBaseUrl.endsWith('/v1')
-    ? `${normalizedBaseUrl}/messages`
-    : `${normalizedBaseUrl}/v1/messages`;
 }
 
 async function createVisionDelegationHttpError(response: Response): Promise<Error> {

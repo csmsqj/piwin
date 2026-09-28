@@ -86,7 +86,7 @@ describe('vision-delegation helpers', () => {
     expect(cache.get('c')).toBe('3');
   });
 
-  it('uses the OpenAI-compatible v1 route and returns the model description', async () => {
+  it('posts to the same chat/completions URL as Pi (no /v1 inserted) and returns the description', async () => {
     const temporaryDirectory = await mkdtemp(join(tmpdir(), 'piwin-vision-test-'));
     const imagePath = join(temporaryDirectory, 'sample.png');
     await writeFile(imagePath, Buffer.from([137, 80, 78, 71]));
@@ -114,7 +114,7 @@ describe('vision-delegation helpers', () => {
         },
       });
 
-      expect(requestUrl).toBe('http://gateway.test/v1/chat/completions');
+      expect(requestUrl).toBe('http://gateway.test/chat/completions');
       expect(description).toBe('A test description.');
     } finally {
       await rm(temporaryDirectory, { recursive: true, force: true });

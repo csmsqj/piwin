@@ -5,7 +5,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import type { ModelProviderConfig, PiwinConfig } from '@piwin/contracts';
+import type {
+  ModelProviderConfig,
+  PiwinConfig,
+  ProviderConnectionTestResult,
+} from '@piwin/contracts';
 import { PiwinUiProvider } from '@piwin/ui-kit';
 import { PIWIN_APPEARANCE_DARK } from './appearance-tokens.js';
 import { DesktopLocaleProvider } from './desktop-locale-context.js';
@@ -107,8 +111,24 @@ function makeProps(
       models: [],
     })),
     onTestModel: vi.fn(async () => ({ durationMs: 100 })),
+    onTestConnection: vi.fn(async () => connectionResult({ outcome: 'chat-ok' })),
     onStoreSecret: vi.fn(async (providerId) => `keychain-${providerId}`),
     searchCatalog: vi.fn(async () => []),
+  };
+}
+
+function connectionResult(
+  overrides: Partial<ProviderConnectionTestResult>,
+): ProviderConnectionTestResult {
+  return {
+    providerId: 'openai',
+    protocol: 'openai-compatible',
+    outcome: 'chat-ok',
+    method: 'model-test',
+    modelId: 'gpt-4.1',
+    chatApi: 'openai-completions',
+    durationMs: 12,
+    ...overrides,
   };
 }
 
@@ -411,13 +431,9 @@ describe('ProviderSettings', () => {
   });
 
   it('tests the connection with the typed key and stores it on save', async () => {
-    const onDiscoverModels = vi.fn(async () => ({
-      providerId: 'openai',
-      protocol: 'openai-compatible' as const,
-      models: [{ id: 'gpt-4.1' }, { id: 'gpt-4.1-mini' }],
-    }));
+    const onTestConnection = vi.fn(async () => connectionResult({ outcome: 'chat-ok' }));
     const onSave = vi.fn<ProviderSettingsProps['onSave']>(async () => true);
-    const props = { ...makeProps(onSave), onDiscoverModels };
+    const props = { ...makeProps(onSave), onTestConnection };
     const container = mount(props);
     openConnection(container);
     act(() => {
@@ -427,9 +443,12 @@ describe('ProviderSettings', () => {
       byTestId<HTMLButtonElement>(container, 'provider-test-connection')?.click();
     });
     await flush();
-    expect(onDiscoverModels).toHaveBeenCalledWith(expect.objectContaining({ id: 'openai' }), {
+    expect(onTestConnection).toHaveBeenCalledWith(expect.objectContaining({ id: 'openai' }), {
       apiKey: '123456',
     });
+    // Test connection no longer goes through catalog discovery.
+    expect(props.onDiscoverModels).not.toHaveBeenCalled();
+    expect(container.querySelector('.provider-status-pill--ok')?.textContent).toContain('gpt-4.1');
     expect(props.onStoreSecret).not.toHaveBeenCalled();
 
     await act(async () => {
@@ -444,10 +463,11 @@ describe('ProviderSettings', () => {
   });
 
   it('marks the rail item red and keeps delete reachable after a failed test', async () => {
-    const onDiscoverModels = vi.fn(async () => {
-      throw new Error('Model discovery failed (404 Not Found: <!DOCTYPE html>)');
-    });
-    const container = mount({ ...makeProps(), onDiscoverModels });
+    const onError = vi.fn();
+    const onTestConnection = vi.fn(async () =>
+      connectionResult({ outcome: 'auth-failed', httpStatus: 401, detail: 'invalid api key' }),
+    );
+    const container = mount({ ...makeProps(), onError, onTestConnection });
     openConnection(container);
     await act(async () => {
       byTestId<HTMLButtonElement>(container, 'provider-test-connection')?.click();
@@ -457,10 +477,70 @@ describe('ProviderSettings', () => {
       byTestId(container, 'provider-row-openai')?.querySelector('.prail-dot--err'),
     ).not.toBeNull();
     const pill = container.querySelector('.provider-status-pill--err');
-    expect(pill?.getAttribute('title')).toContain('Model discovery failed');
+    expect(pill?.getAttribute('title')).toContain('invalid api key');
+    expect(onError).toHaveBeenCalledWith(expect.stringContaining('HTTP 401'));
 
     openMenu(byTestId(container, 'provider-detail-more'));
     expect(byTestId(document.body, 'provider-delete-btn')).not.toBeNull();
+  });
+
+  it('shows a catalog-less endpoint as a warning, not a red connection failure', async () => {
+    const onError = vi.fn();
+    const onInfo = vi.fn();
+    const onTestConnection = vi.fn(async () =>
+      connectionResult({ outcome: 'catalog-unavailable', method: 'discovery', httpStatus: 404 }),
+    );
+    const container = mount({ ...makeProps(), onError, onInfo, onTestConnection });
+    openConnection(container);
+    await act(async () => {
+      byTestId<HTMLButtonElement>(container, 'provider-test-connection')?.click();
+    });
+    await flush();
+    expect(container.querySelector('.provider-status-pill--warn')?.textContent).toContain(
+      'no model list',
+    );
+    expect(
+      byTestId(container, 'provider-row-openai')?.querySelector('.prail-dot--err'),
+    ).toBeNull();
+    expect(onError).not.toHaveBeenCalled();
+    expect(onInfo).toHaveBeenCalledWith(expect.stringContaining('Add model IDs manually'));
+  });
+
+  it('saves the Responses chat API chosen under Advanced', async () => {
+    const onSave = vi.fn<ProviderSettingsProps['onSave']>(async () => true);
+    const container = mount(makeProps(onSave));
+    openConnection(container);
+    act(() => {
+      byTestId<HTMLButtonElement>(container, 'provider-advanced-toggle')?.click();
+    });
+    const control = byTestId(container, 'provider-chat-api');
+    expect(control).not.toBeNull();
+    const responses = control?.querySelector<HTMLInputElement>('input[value="openai-responses"]');
+    expect(responses).not.toBeNull();
+    act(() => {
+      responses?.click();
+    });
+    await act(async () => {
+      byTestId<HTMLButtonElement>(container, 'provider-save-btn')?.click();
+    });
+    await flush();
+    const saved = onSave.mock.calls[0]?.[0] as PiwinConfig;
+    expect(saved.providers.find((item) => item.id === 'openai')?.chatApi).toBe('openai-responses');
+  });
+
+  it('reports a Host-side failure to run the test as an error', async () => {
+    const onTestConnection = vi.fn(async () => {
+      throw new Error('secret unavailable');
+    });
+    const container = mount({ ...makeProps(), onTestConnection });
+    openConnection(container);
+    await act(async () => {
+      byTestId<HTMLButtonElement>(container, 'provider-test-connection')?.click();
+    });
+    await flush();
+    expect(container.querySelector('.provider-status-pill--err')?.getAttribute('title')).toContain(
+      'secret unavailable',
+    );
   });
 
   it('deletes the provider after confirmation and selects the next one', async () => {

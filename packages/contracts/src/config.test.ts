@@ -15,6 +15,8 @@ import {
   WORKER_POOL_FOREGROUND_RESERVE,
   WORKER_REPLACEMENT_HEADROOM,
   normalizeExecutionConfig,
+  defaultChatApiForProtocol,
+  resolveProviderChatApi,
   resolveProviderCategory,
   resolveModelCategory,
 } from './config.js';
@@ -35,6 +37,47 @@ import type { HostRuntimeResourcesData as HostRuntimeResourcesDataFromResponseDa
 import type { HostRuntimeResourcesData as HostRuntimeResourcesDataFromHostResponses } from './ipc-host-responses.js';
 
 describe('ModelConfigEntry capabilities + routes', () => {
+  it('expresses provider transport separately from native search shaping', () => {
+    const provider = {
+      id: 'xai',
+      protocol: 'openai-compatible' as const,
+      chatApi: 'openai-responses' as const,
+      name: 'xAI',
+      baseUrl: 'https://api.x.ai/v1',
+      models: [
+        {
+          id: 'grok',
+          capabilities: ['native-web-search'] as ModelCapability[],
+          nativeSearchAdapter: 'xai-web-search-tool' as const,
+        },
+      ],
+    };
+    expect(resolveProviderChatApi(provider)).toBe('openai-responses');
+    expect(provider.models[0]?.nativeSearchAdapter).toBe('xai-web-search-tool');
+  });
+
+  it('keeps explicit legacy chat transport defaults', () => {
+    expect(defaultChatApiForProtocol('openai-compatible')).toBe('openai-completions');
+    expect(defaultChatApiForProtocol('anthropic-compatible')).toBe('anthropic-messages');
+    expect(defaultChatApiForProtocol('google-gemini')).toBe('google-generative-ai');
+  });
+
+  it('accepts bounded provider-specific native search options', () => {
+    const entry: ModelConfigEntry = {
+      id: 'claude-search',
+      capabilities: ['native-web-search'],
+      nativeSearchAdapter: 'anthropic-web-search-tool',
+      nativeSearchOptions: {
+        anthropic: {
+          toolType: 'web_search_20260318',
+          allowedCallers: ['direct'],
+          betaToken: 'web-search-2025-03-05',
+        },
+      },
+    };
+    expect(entry.nativeSearchOptions?.anthropic?.toolType).toBe('web_search_20260318');
+  });
+
   it('accepts capabilities and routes', () => {
     const entry: ModelConfigEntry = {
       id: 'glm-image',

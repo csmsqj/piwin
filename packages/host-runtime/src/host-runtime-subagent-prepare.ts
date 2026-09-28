@@ -232,6 +232,7 @@ export async function prepareSubagentTask(
       return {
         providerId: provider.providerId,
         ...(provider.protocol !== undefined ? { protocol: provider.protocol } : {}),
+        ...(provider.chatApi !== undefined ? { chatApi: provider.chatApi } : {}),
         ...(provider.baseUrl !== undefined ? { baseUrl: provider.baseUrl } : {}),
         ...(provider.headers ? { headers: { ...provider.headers } } : {}),
         models: provider.models.map((model) => ({

@@ -6,6 +6,7 @@ import type {
   HostResponse,
   MediaReadData,
   SpeechTranscribeData,
+  ConfiguredChatModel,
 } from '@piwin/contracts';
 import {
   MEDIA_READ_WIRE_SAFE_BYTES,
@@ -18,12 +19,13 @@ import {
   modelSupportsCapability,
   projectConfiguredChatModels,
 } from '@piwin/contracts';
+import { lookupCatalogByModelId } from '@piwin/agent-host';
 import {
   applySettingsMutations,
   SettingsRevisionConflictError,
   SettingsService,
 } from '../settings/settings-service.js';
-import { isSubscriptionProvider, isV1SubscriptionProviderId } from '@piwin/contracts';
+import { isSubscriptionProvider } from '@piwin/contracts';
 import { createMediaService } from '@piwin/media';
 import { createExtensionRevisionStore, installExtension } from '@piwin/extensions';
 import {
@@ -56,12 +58,11 @@ import { loadPiwinConfig, savePiwinConfig } from '../config-store.js';
 import { ensureBundledExtensionsInstalled } from '../ensure-bundled-extensions.js';
 import { ensureBundledPromptsInstalled } from '../ensure-bundled-prompts.js';
 import { discoverProviderModels } from '../provider-model-discovery.js';
-import {
-  mergeProviderSecretSource,
-  resolveProviderCallSecret,
-} from '../provider-discovery-auth.js';
+import { mergeProviderSecretSource } from '../provider-discovery-auth.js';
 import { handleModelCatalogCommand } from './model-catalog-commands.js';
 import { testProviderModel } from '../provider-model-test.js';
+import { testProviderConnection } from '../provider-connection-test.js';
+import { prepareProviderProbe } from './provider-probe-context.js';
 import { testImageGenerationModel } from '../image-generation-test.js';
 import { decodeBase64Audio, transcribeOpenAiCompatible } from '@piwin/speech';
 import {
@@ -133,6 +134,7 @@ const TYPES = new Set<HostCommand['type']>([
   'models/configured',
   'models/image-catalog/search',
   'models/test',
+  'models/test-connection',
   'models/image-test',
   'web/search-route-preview',
   'vision/delegate',
@@ -142,6 +144,21 @@ const TYPES = new Set<HostCommand['type']>([
   'web/test-search-source',
   'code-search/test-windsurf',
 ]);
+
+export function enrichConfiguredChatModelsWithCatalog(
+  models: Array<Record<string, unknown> | ConfiguredChatModel>,
+): void {
+  for (const model of models) {
+    const modelId = typeof model.modelId === 'string' ? model.modelId : undefined;
+    const label = typeof model.label === 'string' ? model.label : undefined;
+    if (modelId && (!label || label.trim().length === 0 || label === modelId)) {
+      const catalog = lookupCatalogByModelId(modelId);
+      if (catalog?.name && catalog.name.trim().length > 0 && catalog.name !== modelId) {
+        model.label = catalog.name.trim();
+      }
+    }
+  }
+}
 
 export function isCatalogCommand(command: HostCommand): boolean {
   return TYPES.has(command.type);
@@ -588,7 +605,7 @@ export async function handleCatalogCommand(
             accounts
               .filter(
                 (account) =>
-                  isV1SubscriptionProviderId(account.providerId) &&
+                  account.surface === 'v1' &&
                   (account.state === 'logged-in' ||
                     account.state === 'logging-in' ||
                     account.state === 'sync-error' ||
@@ -642,18 +659,13 @@ export async function handleCatalogCommand(
       try {
         // Host owns secrets. Remote shells send a stripped provider row; pull
         // the stored ref from this Host's config and resolve it here.
-        const secretResolver = createSecretResolver({ piwinRoot: getPiwinRoot(context.piwinRoot) });
-        const oneShotApiKey = command.apiKey?.trim();
-        const config = await loadPiwinConfig(getPiwinRoot(context.piwinRoot));
-        const persisted = config.providers.find((entry) => entry.id === command.provider.id);
-        const provider = mergeProviderSecretSource(command.provider, persisted);
-        const result = await discoverProviderModels(provider, {
-          resolveSecret: async (candidate) =>
-            resolveProviderCallSecret({
-              provider: candidate,
-              ...(oneShotApiKey ? { oneShotApiKey } : {}),
-              resolveSecret: (source) => secretResolver.resolveProviderSecret(source),
-            }),
+        const probe = await prepareProviderProbe({
+          piwinRoot: context.piwinRoot,
+          provider: command.provider,
+          apiKey: command.apiKey,
+        });
+        const result = await discoverProviderModels(probe.provider, {
+          resolveSecret: probe.resolveSecret,
         });
         return ok(requestId, 'models/discover', result);
       } catch (error) {
@@ -668,32 +680,47 @@ export async function handleCatalogCommand(
         const config = await service.ensureLoggedInProviders();
         const projected = projectConfiguredChatModels(config);
         const merged = await service.mergeConfiguredModels(projected);
+        enrichConfiguredChatModelsWithCatalog(merged.models);
         return ok(requestId, 'models/configured', merged);
       } catch {
         const config = await loadPiwinConfig(getPiwinRoot(context.piwinRoot));
-        return ok(requestId, 'models/configured', projectConfiguredChatModels(config));
+        const projected = projectConfiguredChatModels(config);
+        enrichConfiguredChatModelsWithCatalog(projected.models);
+        return ok(requestId, 'models/configured', projected);
       }
     }
     case 'models/test': {
       try {
-        const secretResolver = createSecretResolver({ piwinRoot: getPiwinRoot(context.piwinRoot) });
-        const oneShotApiKey = command.apiKey?.trim();
-        const config = await loadPiwinConfig(getPiwinRoot(context.piwinRoot));
-        const persisted = config.providers.find((entry) => entry.id === command.provider.id);
         // Same Host-owned secret rule as models/discover.
-        const provider = mergeProviderSecretSource(command.provider, persisted);
-        const result = await testProviderModel(provider, command.modelId, {
-          resolveSecret: async (candidate) =>
-            resolveProviderCallSecret({
-              provider: candidate,
-              ...(oneShotApiKey ? { oneShotApiKey } : {}),
-              resolveSecret: (source) => secretResolver.resolveProviderSecret(source),
-            }),
+        const probe = await prepareProviderProbe({
+          piwinRoot: context.piwinRoot,
+          provider: command.provider,
+          apiKey: command.apiKey,
+        });
+        const result = await testProviderModel(probe.provider, command.modelId, {
+          resolveSecret: probe.resolveSecret,
         });
         return ok(requestId, 'models/test', result);
       } catch (error) {
         const message = formatError(error);
         return fail(requestId, 'models/test', message);
+      }
+    }
+    case 'models/test-connection': {
+      try {
+        const probe = await prepareProviderProbe({
+          piwinRoot: context.piwinRoot,
+          provider: command.provider,
+          apiKey: command.apiKey,
+        });
+        const result = await testProviderConnection(probe.provider, command.modelId, {
+          resolveSecret: probe.resolveSecret,
+        });
+        return ok(requestId, 'models/test-connection', result);
+      } catch (error) {
+        // Only Host-side setup (config/secret resolution) lands here; provider
+        // answers are verdicts inside a successful response.
+        return fail(requestId, 'models/test-connection', formatError(error));
       }
     }
     case 'models/image-test': {

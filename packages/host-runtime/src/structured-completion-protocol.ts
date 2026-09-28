@@ -1,5 +1,6 @@
 import type { ModelProviderConfig } from '@piwin/contracts';
 import { StructuredCompletionError } from './structured-completion-error.js';
+import { ProviderEndpointError, resolveProviderChatEndpoint } from './provider-endpoint.js';
 
 export type StructuredCompletionRequest = {
   provider: ModelProviderConfig;
@@ -25,20 +26,29 @@ export function buildCompletionEndpoint(
   modelId: string,
   label: string,
 ): string {
-  const baseUrl = provider.baseUrl.trim().replace(/\/+$/, '');
-  if (!baseUrl) {
+  if (!provider.baseUrl.trim()) {
     throw new StructuredCompletionError(
       'provider-request-failed',
       `${label} completion requires a Base URL`,
     );
   }
-  if (provider.protocol === 'google-gemini') {
-    return `${baseUrl}/models/${encodeURIComponent(modelId)}:generateContent`;
+  try {
+    // Structured bodies use Chat Completions (`response_format`) even when
+    // the provider's Pi chat runs on Responses; the URL rule stays Pi's.
+    return resolveProviderChatEndpoint(
+      provider,
+      modelId,
+      provider.protocol === 'openai-compatible' ? 'openai-completions' : undefined,
+    );
+  } catch (error) {
+    if (error instanceof ProviderEndpointError) {
+      throw new StructuredCompletionError(
+        'provider-request-failed',
+        `${label} completion: ${error.message}`,
+      );
+    }
+    throw error;
   }
-  if (provider.protocol === 'anthropic-compatible') {
-    return baseUrl.endsWith('/v1') ? `${baseUrl}/messages` : `${baseUrl}/v1/messages`;
-  }
-  return baseUrl.endsWith('/v1') ? `${baseUrl}/chat/completions` : `${baseUrl}/v1/chat/completions`;
 }
 
 export function buildCompletionBody(request: StructuredCompletionRequest): Record<string, unknown> {

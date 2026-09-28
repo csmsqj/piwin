@@ -133,6 +133,7 @@ export class WorkerTaskRunner implements SubagentTaskRunner {
         (provider) => ({
           providerId: provider.providerId,
           ...(provider.protocol !== undefined ? { protocol: provider.protocol } : {}),
+          ...(provider.chatApi !== undefined ? { chatApi: provider.chatApi } : {}),
           ...(provider.baseUrl !== undefined ? { baseUrl: provider.baseUrl } : {}),
           ...(provider.headers ? { headers: { ...provider.headers } } : {}),
           models: provider.models.map((model) => ({

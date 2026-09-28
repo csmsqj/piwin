@@ -25,6 +25,7 @@ import {
   searchPiImagesCatalog,
 } from '@piwin/agent-host';
 import { readExplicitVideoGenerationMetadata } from './provider-model-capabilities.js';
+import { formatProviderHttpFailure } from './provider-http-failure.js';
 import type { ExplicitVideoGenerationMetadata } from './provider-model-capabilities.js';
 
 const DISCOVERY_TIMEOUT_MS = 15_000;
@@ -36,11 +37,30 @@ export type ProviderModelDiscoveryDependencies = {
   resolveSecret: (provider: ModelProviderConfig) => Promise<string | null>;
 };
 
+/**
+ * Why a discovery / probe request failed. The connection test maps these to
+ * a user verdict, so an HTTP 404 from a catalog-less endpoint is never
+ * confused with a DNS/TLS failure.
+ */
+export type ProviderProbeFailureKind =
+  | 'config'
+  | 'http'
+  | 'network'
+  | 'timeout'
+  | 'invalid-response';
+
 export class ProviderModelDiscoveryError extends Error {
   readonly name = 'ProviderModelDiscoveryError';
+  readonly failureKind: ProviderProbeFailureKind;
+  readonly httpStatus: number | undefined;
 
-  constructor(message: string) {
+  constructor(
+    message: string,
+    failure: { kind: ProviderProbeFailureKind; httpStatus?: number } = { kind: 'config' },
+  ) {
     super(message);
+    this.failureKind = failure.kind;
+    this.httpStatus = failure.httpStatus;
   }
 }
 
@@ -66,10 +86,19 @@ export async function discoverProviderModels(
     });
     if (!response.ok) {
       throw new ProviderModelDiscoveryError(
-        `Model discovery failed (${await formatDiscoveryHttpFailure(response)})`,
+        `Model discovery failed (${await formatProviderHttpFailure(response)})`,
+        { kind: 'http', httpStatus: response.status },
       );
     }
-    const payload: unknown = await response.json();
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch {
+      throw new ProviderModelDiscoveryError('Model discovery returned a non-JSON response', {
+        kind: 'invalid-response',
+        httpStatus: response.status,
+      });
+    }
     const models = parseDiscoveredModels(provider.protocol, payload).map(
       ({ model, videoMetadata }) =>
         enrichDiscoveredModelFromCatalog(model, provider.protocol, videoMetadata),
@@ -80,65 +109,21 @@ export async function discoverProviderModels(
       throw error;
     }
     if (abortController.signal.aborted) {
-      throw new ProviderModelDiscoveryError('Model discovery timed out after 15 seconds');
+      throw new ProviderModelDiscoveryError('Model discovery timed out after 15 seconds', {
+        kind: 'timeout',
+      });
     }
     const message = formatError(error);
-    throw new ProviderModelDiscoveryError(`Model discovery failed: ${message}`);
+    throw new ProviderModelDiscoveryError(`Model discovery failed: ${message}`, {
+      kind: 'network',
+    });
   } finally {
     clearTimeout(timeout);
   }
 }
 
-async function formatDiscoveryHttpFailure(response: Response): Promise<string> {
-  const status = `${response.status} ${response.statusText || 'request rejected'}`.trim();
-  let raw = '';
-  try {
-    raw = (await response.text()).trim();
-  } catch {
-    return status;
-  }
-  if (!raw) {
-    return status;
-  }
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    const message = readDiscoveryErrorMessage(parsed);
-    if (message) {
-      return `${status}: ${message}`;
-    }
-  } catch {
-    // Keep a short raw snippet for gateways that return plain text.
-  }
-  if (raw.startsWith('<') || /<html[\s>]/i.test(raw) || /<!doctype html/i.test(raw)) {
-    return status;
-  }
-  return `${status}: ${raw.slice(0, 180)}`;
-}
-
-function readDiscoveryErrorMessage(payload: unknown): string | null {
-  if (typeof payload === 'string' && payload.trim()) {
-    return payload.trim();
-  }
-  if (!payload || typeof payload !== 'object') {
-    return null;
-  }
-  const record = payload as Record<string, unknown>;
-  if (typeof record.error === 'string' && record.error.trim()) {
-    return record.error.trim();
-  }
-  if (record.error && typeof record.error === 'object') {
-    const nested = record.error as Record<string, unknown>;
-    if (typeof nested.message === 'string' && nested.message.trim()) {
-      return nested.message.trim();
-    }
-  }
-  if (typeof record.message === 'string' && record.message.trim()) {
-    return record.message.trim();
-  }
-  return null;
-}
-
-function buildDiscoveryEndpoint(provider: ModelProviderConfig): string {
+/** Catalog URL. Lenient on purpose: see the discovery exception in provider-endpoint.ts. */
+export function buildDiscoveryEndpoint(provider: ModelProviderConfig): string {
   const baseUrl = provider.baseUrl.trim().replace(/\/+$/, '');
   if (!baseUrl) {
     throw new ProviderModelDiscoveryError('Model discovery requires a Base URL');
@@ -225,11 +210,16 @@ function parseDiscoveredModels(
   payload: unknown,
 ): ParsedDiscoveredModel[] {
   if (!isRecord(payload)) {
-    throw new ProviderModelDiscoveryError('Model discovery returned an invalid response');
+    throw new ProviderModelDiscoveryError('Model discovery returned an invalid response', {
+      kind: 'invalid-response',
+    });
   }
   const rawModels = protocol === 'google-gemini' ? payload.models : payload.data;
   if (!Array.isArray(rawModels)) {
-    throw new ProviderModelDiscoveryError('Model discovery response did not contain a model list');
+    throw new ProviderModelDiscoveryError(
+      'Model discovery response did not contain a model list',
+      { kind: 'invalid-response' },
+    );
   }
 
   const deduplicated = new Map<string, ParsedDiscoveredModel>();

@@ -389,6 +389,20 @@ export type PlatformHostCommand =
     }
   | {
       id?: string;
+      /**
+       * Provider "Test connection". Chats with `modelId` (or the first enabled
+       * chat model) when there is one; otherwise falls back to catalog
+       * discovery. Always succeeds with a `ProviderConnectionTestResult`
+       * verdict unless the Host itself could not run the probe.
+       */
+      type: 'models/test-connection';
+      provider: ModelProviderConfig;
+      modelId?: string;
+      /** One-shot secret for this request only — never persisted by host. */
+      apiKey?: string;
+    }
+  | {
+      id?: string;
       type: 'models/image-test';
       provider: ModelProviderConfig;
       modelId: string;

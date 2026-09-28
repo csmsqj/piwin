@@ -69,6 +69,8 @@ export type SerializableBlueprint = {
 export type SerializableProviderRuntime = {
   providerId: string;
   protocol?: 'openai-compatible' | 'anthropic-compatible' | 'google-gemini';
+  /** Pi chat transport; omitted means the protocol default (Chat Completions for OpenAI). */
+  chatApi?: import('@piwin/contracts').ProviderChatApi;
   baseUrl?: string;
   headers?: Record<string, string>;
   models: Array<{

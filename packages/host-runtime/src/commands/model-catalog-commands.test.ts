@@ -2,7 +2,8 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { lookupCatalogByModelId, resetModelCatalogSnapshot } from '@piwin/agent-host';
+import { installModelCatalogSnapshot, lookupCatalogByModelId, resetModelCatalogSnapshot } from '@piwin/agent-host';
+import { enrichConfiguredChatModelsWithCatalog } from './catalog-commands.js';
 import { handleModelCatalogCommand } from './model-catalog-commands.js';
 import { syncModelCatalogFromModelsDev } from '../model-catalog-store.js';
 import type { HostCommandContext } from './host-command-context.js';
@@ -103,5 +104,34 @@ describe('handleModelCatalogCommand', () => {
       success: false,
     });
     expect(lookupCatalogByModelId('grok-4.6')?.contextWindow).toBe(500_000);
+  });
+});
+describe('enrichConfiguredChatModelsWithCatalog', () => {
+  it('populates missing model label from catalog and strips variant suffixes', () => {
+    installModelCatalogSnapshot({
+      source: 'models.dev',
+      catalogVersion: 'test',
+      entries: [
+        {
+          catalogProviderId: 'google',
+          modelId: 'google/gemini-3.8-flash',
+          name: 'Gemini 3.8 Flash',
+          input: ['text', 'image'],
+          reasoning: true,
+          contextWindow: 1_000_000,
+          maxTokens: 128_000,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        },
+      ],
+      imageEntries: [],
+    });
+
+    const models = [
+      { providerId: 'custom-openai', modelId: 'gemini-3.8-flash-high' },
+      { providerId: 'custom-openai', modelId: 'gemini-3.8-flash', label: 'Custom Label' },
+    ];
+    enrichConfiguredChatModelsWithCatalog(models);
+    expect(models[0]?.label).toBe('Gemini 3.8 Flash');
+    expect(models[1]?.label).toBe('Custom Label');
   });
 });

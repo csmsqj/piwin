@@ -157,7 +157,7 @@ export function ModelEditInline(props: ModelEditInlineProps): ReactElement {
   const providerCopy = getDesktopTranslator(isChinese ? 'zh-CN' : 'en').settings.provider;
   const t = isChinese
     ? {
-        label: '显示名称',
+        label: '模型名称',
         context: '上下文',
         output: '最大输出',
         tooltip: '描述',
@@ -175,7 +175,7 @@ export function ModelEditInline(props: ModelEditInlineProps): ReactElement {
         saved: '已保存',
       }
     : {
-        label: 'Label',
+        label: 'Model name',
         context: 'Context',
         output: 'Max output',
         tooltip: 'Tooltip',
@@ -210,6 +210,7 @@ export function ModelEditInline(props: ModelEditInlineProps): ReactElement {
             onChange={(event: ChangeEvent<HTMLInputElement>) =>
               updateDraft((current) => ({ ...current, label: event.target.value }))
             }
+            placeholder={model.id}
             data-testid="model-edit-label"
             disabled={disabled}
           />

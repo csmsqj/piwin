@@ -650,6 +650,7 @@ export function useHostBootstrap(args: UseHostBootstrapArgs) {
         // Settings / discovery surface errors in-panel. Do not spam global sticky toasts.
         if (
           message.command === 'models/discover' ||
+          message.command === 'models/test-connection' ||
           message.command === 'config/get' ||
           message.command === 'settings/get' ||
           message.command === 'settings/apply' ||

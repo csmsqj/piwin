@@ -12,6 +12,7 @@ import type {
   LocalMobileAccessCommand,
   ModelDiscoveryResult,
   ModelProviderConfig,
+  ProviderConnectionTestResult,
   PiwinConfig,
   SessionSummary,
   ThemeManifest,
@@ -42,6 +43,7 @@ export type SettingsConfigRequest = (command: {
     | 'models/catalog/sync'
     | 'models/image-catalog/search'
     | 'models/test'
+    | 'models/test-connection'
     | 'models/image-test'
     | 'models/configured'
     | 'vision/delegate'
@@ -191,6 +193,11 @@ export type SettingsContextValue = {
     modelId: string,
     options?: { apiKey?: string },
   ) => Promise<{ durationMs: number }>;
+  /** Provider "Test connection": structured verdict, never a thrown 404. */
+  testProviderConnection: (
+    provider: ModelProviderConfig,
+    options?: { apiKey?: string; modelId?: string },
+  ) => Promise<ProviderConnectionTestResult>;
   testImageGenerationModel?: (
     provider: ModelProviderConfig,
     modelId: string,

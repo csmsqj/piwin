@@ -367,6 +367,22 @@ describe('buildWorkerProviderRegistration', () => {
     expect(registration.models[0]).not.toHaveProperty('compat');
   });
 
+  it('keeps the Responses transport from the envelope (SDK/RPC parity)', () => {
+    const registration = buildWorkerProviderRegistration(
+      {
+        providerId: 'ark-plan',
+        protocol: 'openai-compatible',
+        chatApi: 'openai-responses',
+        baseUrl: 'https://ark.cn-beijing.volces.com/api/plan/v3',
+        models: [{ id: 'doubao-seed-2.0-pro' }],
+        auth: { kind: 'env', envName: 'ARK_API_KEY' },
+      },
+      'secret-key',
+    );
+    expect(registration.api).toBe('openai-responses');
+    expect(registration.models[0]?.api).toBe('openai-responses');
+  });
+
   it('auth=none yields no apiKey and authHeader false', () => {
     const provider: SerializableProviderRuntime = {
       providerId: 'prov-none',

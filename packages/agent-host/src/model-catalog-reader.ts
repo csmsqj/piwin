@@ -156,6 +156,20 @@ export function getModelCatalogStatus(): ModelCatalogStatus {
   };
 }
 
+/**
+ * Strip common effort or variant suffixes like `-high`, `-low`, `-thinking`, `:thinking`, etc.
+ */
+export function stripModelEffortOrVariantSuffix(id: string): string {
+  let current = id;
+  const suffixPattern = /[-:_](high|low|medium|max|xhigh|minimal|thinking|nothinking|free)(?=[^a-z0-9]|$)/i;
+  while (suffixPattern.test(current)) {
+    const next = current.replace(suffixPattern, '');
+    if (next === current || next.length === 0) break;
+    current = next;
+  }
+  return current;
+}
+
 function scoreMatch(entry: ModelCatalogEntry, query: string): number {
   const q = query.toLowerCase();
   const id = entry.modelId.toLowerCase();
@@ -163,6 +177,12 @@ function scoreMatch(entry: ModelCatalogEntry, query: string): number {
   if (id.startsWith(q)) return 300;
   if (name.startsWith(q)) return 200;
   if (id.includes(q) || name.includes(q)) return 100;
+  const strippedQ = stripModelEffortOrVariantSuffix(q);
+  if (strippedQ !== q && strippedQ.length >= 2) {
+    if (id.startsWith(strippedQ)) return 280;
+    if (name.startsWith(strippedQ)) return 180;
+    if (id.includes(strippedQ) || name.includes(strippedQ)) return 90;
+  }
   return 0;
 }
 
@@ -211,13 +231,26 @@ export function searchPiCatalog(request: ModelCatalogSearchRequest = {}): ModelC
 export function lookupCatalogByModelId(modelId: string): ModelCatalogEntry | undefined {
   const id = modelId.trim();
   if (!id) return undefined;
-  const exact = getAllEntries().find((entry) => entry.modelId === id);
+  const entries = getAllEntries();
+  const exact = entries.find((entry) => entry.modelId === id);
   if (exact) return exact;
   const lower = id.toLowerCase();
-  const caseInsensitive = getAllEntries().find((entry) => entry.modelId.toLowerCase() === lower);
+  const caseInsensitive = entries.find((entry) => entry.modelId.toLowerCase() === lower);
   if (caseInsensitive) return caseInsensitive;
+  // Match catalog entries where the bare name (after last slash) matches this id
+  const slashMatch = entries.find((entry) => splitModelName(entry.modelId).toLowerCase() === lower);
+  if (slashMatch) return slashMatch;
   const name = splitModelName(id);
-  return name !== id ? lookupCatalogByModelId(name) : undefined;
+  if (name !== id) {
+    const fromName = lookupCatalogByModelId(name);
+    if (fromName) return fromName;
+  }
+  const stripped = stripModelEffortOrVariantSuffix(id);
+  if (stripped !== id) {
+    const fromStripped = lookupCatalogByModelId(stripped);
+    if (fromStripped) return fromStripped;
+  }
+  return undefined;
 }
 
 /**
@@ -258,7 +291,7 @@ export function enrichFromCatalog<T extends { id: string }>(
   if (
     (result as { label?: string }).label === undefined &&
     catalog.name &&
-    catalog.name !== catalog.modelId
+    (catalog.name !== catalog.modelId || catalog.name !== (result as { id?: string }).id)
   ) {
     (result as { label?: string }).label = catalog.name;
   }

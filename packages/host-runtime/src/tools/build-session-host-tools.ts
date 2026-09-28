@@ -228,6 +228,7 @@ export async function buildSessionHostTools(
     const searchAdapter = resolveNativeSearchAdapterSupport(
       configuredModel?.provider.protocol,
       configuredModel?.model.nativeSearchAdapter,
+      configuredModel?.provider.chatApi,
     );
     const webForGeneration = webConfigWithDuckDuckGoFloor(resolveWebConfig(options.config.web), {
       model: configuredModel?.model ?? null,

@@ -53,6 +53,7 @@ export function ModelsPage(): ReactElement {
     setInfo,
     discoverProviderModels,
     testProviderModel,
+    testProviderConnection,
     searchModelCatalog,
     storeProviderSecret,
     loadProviderSecret,
@@ -199,6 +200,7 @@ export function ModelsPage(): ReactElement {
                 onInfo={setInfo}
                 onDiscoverModels={discoverProviderModels}
                 onTestModel={testProviderModel}
+                onTestConnection={testProviderConnection}
                 onStoreSecret={storeProviderSecret}
                 onLoadSecret={loadProviderSecret}
                 selectedProviderId={selectedProviderId}

@@ -118,6 +118,7 @@ export const FALLBACK_REMOTE_ALLOWED_COMMANDS = [
   'pi-environment/apply',
   'models/discover',
   'models/test',
+  'models/test-connection',
   'models/image-test',
   'models/catalog/search',
   'models/catalog/status',

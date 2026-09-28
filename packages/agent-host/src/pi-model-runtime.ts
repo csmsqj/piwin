@@ -1,4 +1,9 @@
-import type { ModelCapability, ModelProviderConfig, ResolvedSearchRoute } from '@piwin/contracts';
+import type {
+  ModelCapability,
+  ModelProviderConfig,
+  ProviderChatApi,
+  ResolvedSearchRoute,
+} from '@piwin/contracts';
 import {
   DEFAULT_MODEL_CONTEXT_WINDOW,
   DEFAULT_MODEL_MAX_OUTPUT_TOKENS,
@@ -10,7 +15,11 @@ import { buildThinkingLevelMap, type PiThinkingLevelMap } from './map-thinking-l
 import { resolveProviderStreamSimple } from './attach-provider-stream-simple.js';
 import type { NativeSearchModelFlags, NativeSearchStreamSimple } from './native-web-search.js';
 
-export type PiProviderApi = 'openai-completions' | 'anthropic-messages' | 'google-generative-ai';
+export type PiProviderApi =
+  | 'openai-completions'
+  | 'openai-responses'
+  | 'anthropic-messages'
+  | 'google-generative-ai';
 
 export type PiModelCompat = {
   supportsStore?: boolean;
@@ -131,14 +140,24 @@ export type BuildPiProviderRegistrationOptions = {
   streamSimple?: NativeSearchStreamSimple;
 };
 
-export function resolvePiApiForProvider(protocol: ModelProviderConfig['protocol']): PiProviderApi {
+/**
+ * Pi transport for a product provider row. `chatApi: 'openai-responses'` is
+ * honoured only on OpenAI-compatible rows (Pi calls `{baseUrl}/responses`);
+ * every other combination keeps the protocol default so a stray value cannot
+ * select an impossible wire. Omitted protocol (legacy envelopes) is OpenAI.
+ */
+export function resolvePiApiForProvider(
+  protocol: ModelProviderConfig['protocol'] | undefined,
+  chatApi?: ProviderChatApi,
+): PiProviderApi {
   switch (protocol) {
     case 'anthropic-compatible':
       return 'anthropic-messages';
     case 'google-gemini':
       return 'google-generative-ai';
     case 'openai-compatible':
-      return 'openai-completions';
+    case undefined:
+      return chatApi === 'openai-responses' ? 'openai-responses' : 'openai-completions';
   }
 }
 
@@ -169,7 +188,7 @@ export function buildPiProviderRegistration(
   apiKey?: string,
   options: BuildPiProviderRegistrationOptions = {},
 ): PiProviderRegistration {
-  const api = resolvePiApiForProvider(provider.protocol);
+  const api = resolvePiApiForProvider(provider.protocol, provider.chatApi);
   const models: PiModelRegistration[] = provider.models
     .filter((model) => isModelEnabled(model) && modelSupportsCapability(model, 'chat'))
     .map((model) => {

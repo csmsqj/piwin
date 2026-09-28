@@ -11,6 +11,7 @@ import type {
   ModelProviderConfig,
   ModelRef,
   NativeSearchAdapterKind,
+  ProviderChatApi,
   PiwinConfig,
   ResolvedSearchRoute,
   SearchBackend,
@@ -20,6 +21,7 @@ import type {
   WebConfig,
 } from '@piwin/contracts';
 import {
+  defaultChatApiForProtocol,
   inferSearchRoutePolicy,
   isModelEnabled,
   isProviderEnabled,
@@ -38,6 +40,8 @@ export type NativeSearchAdapterSupport = {
    * enabling the request, but required for "full" readiness in Settings.
    */
   citationSupported: boolean;
+  /** Stable user-facing explanation when request shaping is unavailable. */
+  reason?: string;
 };
 
 export type ResolveSearchRouteInput = {
@@ -152,7 +156,10 @@ function evaluateNativeReadiness(input: ResolveSearchRouteInput): SearchBackendR
 
   const adapterRequestSupported = input.adapter.requestSupported;
   if (modelTagged && !adapterRequestSupported) {
-    reasons.push('active Pi adapter cannot express provider-native web search for this model');
+    reasons.push(
+      input.adapter.reason ??
+        'active Pi adapter cannot express provider-native web search for this model',
+    );
   }
 
   const adapterCitationSupported = input.adapter.citationSupported;
@@ -250,6 +257,7 @@ export function findReadyWebSearchDelegate(
     !resolveNativeSearchAdapterSupport(
       configured.provider.protocol,
       configured.model.nativeSearchAdapter,
+      configured.provider.chatApi,
     ).requestSupported
   ) {
     return undefined;
@@ -273,21 +281,39 @@ export function findReadyWebSearchDelegate(
 export function resolveNativeSearchAdapterSupport(
   protocol: ModelProviderConfig['protocol'] | undefined,
   nativeSearchAdapter?: NativeSearchAdapterKind,
+  chatApi?: ProviderChatApi,
 ): NativeSearchAdapterSupport {
+  if (protocol === undefined) {
+    return {
+      requestSupported: false,
+      citationSupported: false,
+      reason: 'native web search provider protocol is unavailable',
+    };
+  }
+  if (nativeSearchAdapter === undefined) {
+    return {
+      requestSupported: false,
+      citationSupported: false,
+      reason: 'nativeSearchAdapter is required for models tagged native-web-search',
+    };
+  }
+
+  const resolvedChatApi = chatApi ?? defaultChatApiForProtocol(protocol);
+  const requestSupported = isAdapterExpressibleForProtocol(
+    protocol,
+    resolvedChatApi,
+    nativeSearchAdapter,
+  );
   return {
-    // Legacy configs omit the declaration; fall back to the protocol's
-    // canonical shaping so existing setups keep working. Declared kinds are
-    // checked strictly (vendor-specific shapes are never generically safe).
-    requestSupported:
-      nativeSearchAdapter === undefined
-        ? protocol === 'openai-compatible' ||
-          protocol === 'anthropic-compatible' ||
-          protocol === 'google-gemini'
-        : isAdapterExpressibleForProtocol(protocol, nativeSearchAdapter),
-    // Pi 0.80.10 does not preserve provider annotations/grounding metadata in
-    // its normalized AssistantMessage events. Keep this false until the
-    // adapter receives those response fields; request shaping still works.
+    requestSupported,
+    // Pi 0.84.2 still does not preserve every provider grounding event. Step 2
+    // enables this only after the official raw-event seam is verified.
     citationSupported: false,
+    ...(!requestSupported
+      ? {
+          reason: `nativeSearchAdapter ${nativeSearchAdapter} is incompatible with ${protocol}/${resolvedChatApi}`,
+        }
+      : {}),
   };
 }
 
@@ -297,19 +323,23 @@ export function resolveNativeSearchAdapterSupport(
  */
 export function isAdapterExpressibleForProtocol(
   protocol: ModelProviderConfig['protocol'] | undefined,
+  chatApi: ProviderChatApi | undefined,
   nativeSearchAdapter: NativeSearchAdapterKind,
 ): boolean {
   switch (nativeSearchAdapter) {
     case 'openai-web-search-options':
+      return protocol === 'openai-compatible' && chatApi === 'openai-completions';
     case 'openai-responses-tool':
-      return protocol === 'openai-compatible';
+    case 'xai-web-search-tool':
+      return protocol === 'openai-compatible' && chatApi === 'openai-responses';
     case 'anthropic-web-search-tool':
-      return protocol === 'anthropic-compatible';
+      return protocol === 'anthropic-compatible' && chatApi === 'anthropic-messages';
     case 'google-search-tool':
-      return protocol === 'google-gemini';
+      return protocol === 'google-gemini' && chatApi === 'google-generative-ai';
     case 'vendor-specific':
-      // Custom header/extra_body/tool shapes need a dedicated adapter; never
-      // guess them from the transport protocol.
+      return false;
+    default:
+      // Runtime config can contain values written by a newer/invalid client.
       return false;
   }
 }

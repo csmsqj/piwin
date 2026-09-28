@@ -28,6 +28,7 @@ export type HostRequestAdapters = {
       | 'models/catalog/sync'
       | 'models/image-catalog/search'
       | 'models/test'
+      | 'models/test-connection'
       | 'models/image-test'
       | 'models/configured'
       | 'vision/delegate'
@@ -281,6 +282,22 @@ export function createHostRequestAdapters(hostClient: HostClient): HostRequestAd
           type: 'models/test',
           provider: command.provider,
           modelId: command.modelId,
+          ...(command.apiKey ? { apiKey: command.apiKey } : {}),
+        });
+      }
+      if (command.type === 'models/test-connection') {
+        if (!command.provider) {
+          return {
+            type: 'response',
+            command: 'models/test-connection',
+            success: false,
+            error: 'provider is required',
+          };
+        }
+        return hostClient.request({
+          type: 'models/test-connection',
+          provider: command.provider,
+          ...(command.modelId?.trim() ? { modelId: command.modelId.trim() } : {}),
           ...(command.apiKey ? { apiKey: command.apiKey } : {}),
         });
       }

@@ -20,8 +20,10 @@ import type {
   ModelDiscoveryResult,
   ModelProviderConfig,
   PiwinConfig,
+  ProviderConnectionTestResult,
 } from '@piwin/contracts';
 import { Button } from '@piwin/ui-kit';
+import { describeProviderConnectionResult } from './provider-connection-verdict.js';
 import { ProviderAddDialog } from './provider-add-dialog.js';
 import { ProviderDetail } from './provider-detail.js';
 import {
@@ -61,6 +63,11 @@ export type ProviderSettingsProps = {
     modelId: string,
     options?: DiscoverModelsOptions,
   ) => Promise<{ durationMs: number }>;
+  /** "Test connection": Host verdict (`models/test-connection`), not discovery. */
+  onTestConnection: (
+    provider: ModelProviderConfig,
+    options?: DiscoverModelsOptions,
+  ) => Promise<ProviderConnectionTestResult>;
   /** Persist secret on the Host; returns apiKeyRef. */
   onStoreSecret: (providerId: string, secret: string) => Promise<string>;
   /** Read the saved secret back from the Host so the key field can reveal it. */
@@ -227,20 +234,21 @@ export function ProviderSettings(props: ProviderSettingsProps): ReactElement {
     const id = draft.id;
     testInFlightRef.current = true;
     setTestingId(id);
-    const start = performance.now();
     try {
       const apiKey = draft.apiKeyInput.trim();
-      const result = await onDiscoverModels(
+      // Host chats with the first chat model when there is one and only falls
+      // back to `/models`; a catalog-less endpoint comes back as a warning.
+      const result = await props.onTestConnection(
         mergeConnectionDraft(draft, detailProvider ?? undefined),
         apiKey ? { apiKey } : undefined,
       );
-      const duration = Math.round(performance.now() - start);
-      const message = copy.testOk(result.models.length, duration);
-      setTestStatus((previous) => ({
-        ...previous,
-        [id]: { tone: 'ok', message, durationMs: duration },
-      }));
-      onInfo(message);
+      const verdict = describeProviderConnectionResult(result, isChinese);
+      setTestStatus((previous) => ({ ...previous, [id]: verdict.status }));
+      if (verdict.notify === 'error') {
+        onError(verdict.status.message);
+      } else {
+        onInfo(verdict.status.message);
+      }
     } catch (error) {
       const message = `${copy.statusFail}: ${formatError(error)}`;
       setTestStatus((previous) => ({ ...previous, [id]: { tone: 'err', message } }));
@@ -358,6 +366,7 @@ export function ProviderSettings(props: ProviderSettingsProps): ReactElement {
     const tone = testStatus[provider.id]?.tone;
     if (tone === 'err') return 'err';
     if (tone === 'ok') return 'ok';
+    // 'warn' (e.g. no model catalog) is not a failure: keep the neutral dot.
     return 'on';
   }
 

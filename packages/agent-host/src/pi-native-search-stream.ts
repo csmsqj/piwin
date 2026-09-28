@@ -10,10 +10,14 @@ import type {
 import { anthropicMessagesApi } from '@earendil-works/pi-ai/api/anthropic-messages.lazy';
 import { googleGenerativeAIApi } from '@earendil-works/pi-ai/api/google-generative-ai.lazy';
 import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completions.lazy';
+import { openAIResponsesApi } from '@earendil-works/pi-ai/api/openai-responses.lazy';
 import type { NativeSearchStreamSimple } from './native-web-search.js';
 
 export type PiNativeSearchApi =
-  'openai-completions' | 'anthropic-messages' | 'google-generative-ai';
+  | 'openai-completions'
+  | 'openai-responses'
+  | 'anthropic-messages'
+  | 'google-generative-ai';
 
 /**
  * Return the real Pi stream used by a product provider protocol.
@@ -26,6 +30,8 @@ export function resolvePiNativeSearchStream(api: PiNativeSearchApi): NativeSearc
   switch (api) {
     case 'openai-completions':
       return adaptPiApiStreamSimple(openAICompletionsApi().streamSimple);
+    case 'openai-responses':
+      return adaptPiApiStreamSimple(openAIResponsesApi().streamSimple);
     case 'anthropic-messages':
       return adaptPiApiStreamSimple(anthropicMessagesApi().streamSimple);
     case 'google-generative-ai':

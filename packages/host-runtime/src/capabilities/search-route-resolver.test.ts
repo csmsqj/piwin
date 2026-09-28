@@ -8,7 +8,11 @@ import {
   shouldExposeExternalWebSearch,
 } from './search-route-resolver.js';
 
-const adapterReady = resolveNativeSearchAdapterSupport('openai-compatible');
+const adapterReady = resolveNativeSearchAdapterSupport(
+  'openai-compatible',
+  'openai-web-search-options',
+  'openai-completions',
+);
 const adapterNoRequest = { requestSupported: false, citationSupported: false };
 
 function nativeModel(overrides: Partial<ModelConfigEntry> = {}): ModelConfigEntry {
@@ -27,14 +31,16 @@ function externalWeb(enabled = true): Pick<WebConfig, 'searchSources' | 'searchR
 }
 
 describe('resolveSearchRoute', () => {
-  it('reports request support by protocol without claiming citation support', () => {
-    expect(resolveNativeSearchAdapterSupport('openai-compatible')).toEqual({
-      requestSupported: true,
-      citationSupported: false,
-    });
-    expect(resolveNativeSearchAdapterSupport(undefined)).toEqual({
+  it('fails closed without an explicit adapter and reports why', () => {
+    expect(resolveNativeSearchAdapterSupport('openai-compatible')).toMatchObject({
       requestSupported: false,
       citationSupported: false,
+      reason: expect.stringContaining('nativeSearchAdapter is required'),
+    });
+    expect(resolveNativeSearchAdapterSupport(undefined)).toMatchObject({
+      requestSupported: false,
+      citationSupported: false,
+      reason: expect.stringContaining('protocol is unavailable'),
     });
   });
 
@@ -215,7 +221,12 @@ describe('findReadyWebSearchDelegate', () => {
           name: 'Gemini',
           protocol: 'google-gemini' as const,
           baseUrl: 'https://example.test',
-          models: [nativeModel({ id: 'gemini-search' })],
+          models: [
+            nativeModel({
+              id: 'gemini-search',
+              nativeSearchAdapter: 'google-search-tool',
+            }),
+          ],
         },
       ],
       web: { searchDelegateModel: delegate },
@@ -257,20 +268,66 @@ describe('findReadyWebSearchDelegate', () => {
 });
 
 describe('resolveNativeSearchAdapterSupport (adapter decoupling)', () => {
-  it('falls back to the protocol when no adapter is declared (legacy configs)', () => {
-    expect(resolveNativeSearchAdapterSupport('openai-compatible', undefined).requestSupported).toBe(
-      true,
-    );
-    expect(
-      resolveNativeSearchAdapterSupport('anthropic-compatible', undefined).requestSupported,
-    ).toBe(true);
-    expect(resolveNativeSearchAdapterSupport('google-gemini', undefined).requestSupported).toBe(
-      true,
-    );
-    expect(resolveNativeSearchAdapterSupport(undefined, undefined).requestSupported).toBe(false);
+  it('fails closed when no adapter is declared', () => {
+    for (const protocol of ['openai-compatible', 'anthropic-compatible', 'google-gemini'] as const) {
+      expect(resolveNativeSearchAdapterSupport(protocol, undefined).requestSupported).toBe(false);
+    }
   });
 
-  it('accepts only declared adapters that match the protocol', () => {
+  it('requires protocol and chatApi to match the declared adapter', () => {
+    expect(
+      resolveNativeSearchAdapterSupport(
+        'openai-compatible',
+        'openai-web-search-options',
+        'openai-completions',
+      ).requestSupported,
+    ).toBe(true);
+    expect(
+      resolveNativeSearchAdapterSupport(
+        'openai-compatible',
+        'openai-responses-tool',
+        'openai-responses',
+      ).requestSupported,
+    ).toBe(true);
+    expect(
+      resolveNativeSearchAdapterSupport(
+        'openai-compatible',
+        'xai-web-search-tool',
+        'openai-responses',
+      ).requestSupported,
+    ).toBe(true);
+    expect(
+      resolveNativeSearchAdapterSupport(
+        'anthropic-compatible',
+        'anthropic-web-search-tool',
+        'anthropic-messages',
+      ).requestSupported,
+    ).toBe(true);
+    expect(
+      resolveNativeSearchAdapterSupport(
+        'google-gemini',
+        'google-search-tool',
+        'google-generative-ai',
+      ).requestSupported,
+    ).toBe(true);
+
+    expect(
+      resolveNativeSearchAdapterSupport(
+        'openai-compatible',
+        'openai-responses-tool',
+        'openai-completions',
+      ).requestSupported,
+    ).toBe(false);
+    expect(
+      resolveNativeSearchAdapterSupport(
+        'openai-compatible',
+        'anthropic-web-search-tool',
+        'openai-responses',
+      ).requestSupported,
+    ).toBe(false);
+  });
+
+  it('uses legacy provider transport defaults but never a legacy adapter default', () => {
     expect(
       resolveNativeSearchAdapterSupport('openai-compatible', 'openai-web-search-options')
         .requestSupported,
@@ -278,36 +335,18 @@ describe('resolveNativeSearchAdapterSupport (adapter decoupling)', () => {
     expect(
       resolveNativeSearchAdapterSupport('openai-compatible', 'openai-responses-tool')
         .requestSupported,
-    ).toBe(true);
-    expect(
-      resolveNativeSearchAdapterSupport('anthropic-compatible', 'anthropic-web-search-tool')
-        .requestSupported,
-    ).toBe(true);
-    expect(
-      resolveNativeSearchAdapterSupport('google-gemini', 'google-search-tool').requestSupported,
-    ).toBe(true);
-
-    // A chat/completions-compatible gateway is not evidence that it accepts
-    // Anthropic or Google native search shapes.
-    expect(
-      resolveNativeSearchAdapterSupport('openai-compatible', 'anthropic-web-search-tool')
-        .requestSupported,
-    ).toBe(false);
-    expect(
-      resolveNativeSearchAdapterSupport('google-gemini', 'openai-web-search-options')
-        .requestSupported,
-    ).toBe(false);
-    expect(
-      resolveNativeSearchAdapterSupport('anthropic-compatible', 'google-search-tool')
-        .requestSupported,
     ).toBe(false);
   });
 
-  it('never guesses a vendor-specific mechanism from the protocol', () => {
-    for (const protocol of ['openai-compatible', 'anthropic-compatible', 'google-gemini'] as const) {
-      expect(
-        resolveNativeSearchAdapterSupport(protocol, 'vendor-specific').requestSupported,
-      ).toBe(false);
-    }
+  it('never guesses an unknown or vendor-specific mechanism', () => {
+    expect(
+      resolveNativeSearchAdapterSupport('openai-compatible', 'vendor-specific').requestSupported,
+    ).toBe(false);
+    expect(
+      resolveNativeSearchAdapterSupport(
+        'openai-compatible',
+        'future-adapter' as never,
+      ).requestSupported,
+    ).toBe(false);
   });
 });

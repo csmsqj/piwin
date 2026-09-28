@@ -26,11 +26,11 @@ import { bindExtensionUiToPiSession, createExtensionUiContext } from '../extensi
 import { buildThinkingLevelMap, mapThinkingLevelToPi } from '../map-thinking-level.js';
 import {
   buildPiProviderRegistration,
+  resolvePiApiForProvider,
   resolvePiModelCompat,
   resolvePiModelLimits,
   type PiModelRuntime,
   type PiModelRegistration,
-  type PiProviderApi,
 } from '../pi-model-runtime.js';
 
 import { resolveProviderStreamSimple } from '../attach-provider-stream-simple.js';
@@ -245,19 +245,6 @@ function resolveWorkerProviderApiKey(
   }
 }
 
-function resolveWorkerApi(protocol: SerializableProviderRuntime['protocol']): PiProviderApi {
-  switch (protocol) {
-    case undefined:
-      return 'openai-completions';
-    case 'anthropic-compatible':
-      return 'anthropic-messages';
-    case 'google-gemini':
-      return 'google-generative-ai';
-    case 'openai-compatible':
-      return 'openai-completions';
-  }
-}
-
 /**
  * Build a `PiProviderRegistration` from the serializable envelope (not from
  * `ModelProviderConfig`, which the worker does not load).
@@ -268,7 +255,7 @@ export function buildWorkerProviderRegistration(
   searchRoute?: import('@piwin/contracts').ResolvedSearchRoute | null | undefined,
   streamSimple?: NativeSearchStreamSimple,
 ): ReturnType<typeof buildPiProviderRegistration> {
-  const api = resolveWorkerApi(provider.protocol);
+  const api = resolvePiApiForProvider(provider.protocol, provider.chatApi);
   const models = provider.models.map((model) => {
     const thinkingLevelMap =
       model.reasoning === false

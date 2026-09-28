@@ -55,6 +55,7 @@ export function compileToolPolicy(
     const searchAdapter = resolveNativeSearchAdapterSupport(
       configured?.provider.protocol,
       configured?.model.nativeSearchAdapter,
+      configured?.provider.chatApi,
     );
     const resolvedWeb = config.web ? resolveWebConfig(config.web) : undefined;
     const webForRoute = resolvedWeb
@@ -84,6 +85,7 @@ export function compileToolPolicy(
   const searchAdapter = resolveNativeSearchAdapterSupport(
     configuredModel?.provider.protocol,
     configuredModel?.model.nativeSearchAdapter,
+    configuredModel?.provider.chatApi,
   );
   const webForRoute = resolvedWebConfig
     ? webConfigWithDuckDuckGoFloor(resolvedWebConfig, {

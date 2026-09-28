@@ -48,8 +48,9 @@ export type ModelCapability =
  * on the wire.
  *
  * - `openai-web-search-options` — chat/completions `web_search_options` field.
- * - `openai-responses-tool`       — Responses API `tools: [{type: web_search_preview}]`.
- * - `anthropic-web-search-tool`   — Anthropic `web_search_20250305` tool entry.
+ * - `openai-responses-tool`       — Responses API `tools: [{type: web_search}]`.
+ * - `xai-web-search-tool`         — xAI Responses API `tools: [{type: web_search}]`.
+ * - `anthropic-web-search-tool`   — Anthropic versioned `web_search_*` tool entry.
  * - `google-search-tool`          — Gemini `googleSearch` tool in `config.tools`.
  * - `vendor-specific`             — custom header/extra_body/tool shape that the
  *   generic adapter cannot express; native readiness must be reported as
@@ -58,9 +59,37 @@ export type ModelCapability =
 export type NativeSearchAdapterKind =
   | 'openai-web-search-options'
   | 'openai-responses-tool'
+  | 'xai-web-search-tool'
   | 'anthropic-web-search-tool'
   | 'google-search-tool'
   | 'vendor-specific';
+
+/** Pi chat transport selected independently from provider protocol. */
+export type ProviderChatApi =
+  | 'openai-completions'
+  | 'openai-responses'
+  | 'anthropic-messages'
+  | 'google-generative-ai';
+
+export type AnthropicWebSearchToolType =
+  | 'web_search_20250305'
+  | 'web_search_20260209'
+  | 'web_search_20260318';
+
+export type NativeSearchAdapterOptions = {
+  /** Options used only with `openai-responses-tool`. Default includeSources=true. */
+  openaiResponses?: {
+    includeSources?: boolean;
+  };
+  /** Options used only with `anthropic-web-search-tool`. */
+  anthropic?: {
+    toolType?: AnthropicWebSearchToolType;
+    /** Newer tool versions default to `['direct']` when omitted. */
+    allowedCallers?: readonly string[];
+    /** Optional compatibility token merged into `anthropic-beta`. */
+    betaToken?: string;
+  };
+};
 
 /**
  * Provider wire formats used by the asynchronous video-generation adapters.
@@ -145,10 +174,13 @@ export type ModelConfigEntry = {
    * Wire mechanism the provider expects for native web search (ADR 0043).
    * Declares how the request must be shaped, independently of the transport
    * protocol: an openai-compatible gateway can still require a vendor header
-   * or tool shape that the generic adapter cannot express. When omitted,
-   * Host falls back to the protocol's canonical shaping for compatibility.
+   * or tool shape that the generic adapter cannot express. A model tagged
+   * `native-web-search` without this field fails closed; protocol alone never
+   * selects a request shape.
    */
   nativeSearchAdapter?: NativeSearchAdapterKind;
+  /** Adapter-specific native-search options. Ignored unless the adapter matches. */
+  nativeSearchOptions?: NativeSearchAdapterOptions;
   /** Per-capability route overrides (path, timeout). */
   routes?: Partial<Record<ModelCapability, ModelRouteConfig>>;
   /**
@@ -184,6 +216,11 @@ export type ModelCategory = 'package' | 'custom';
 export type OpenAiCompatibleProviderConfig = {
   id: string;
   protocol: 'openai-compatible';
+  /**
+   * Actual Pi chat transport. Omitted legacy configs resolve to
+   * `openai-completions`; Responses must be selected explicitly.
+   */
+  chatApi?: ProviderChatApi;
   name: string;
   /** Categorization: 'package' (subscription / preset package) or 'custom' (BYOK / self-hosted). */
   category?: ModelCategory;
@@ -202,6 +239,8 @@ export type OpenAiCompatibleProviderConfig = {
 export type AnthropicCompatibleProviderConfig = {
   id: string;
   protocol: 'anthropic-compatible';
+  /** Actual Pi chat transport. Defaults to anthropic-messages. */
+  chatApi?: ProviderChatApi;
   name: string;
   /** Categorization: 'package' (subscription / preset package) or 'custom' (BYOK / self-hosted). */
   category?: ModelCategory;
@@ -220,6 +259,8 @@ export type AnthropicCompatibleProviderConfig = {
 export type GoogleGeminiProviderConfig = {
   id: string;
   protocol: 'google-gemini';
+  /** Actual Pi chat transport. Defaults to google-generative-ai. */
+  chatApi?: ProviderChatApi;
   name: string;
   /** Categorization: 'package' (subscription / preset package) or 'custom' (BYOK / self-hosted). */
   category?: ModelCategory;
@@ -236,6 +277,27 @@ export type GoogleGeminiProviderConfig = {
 
 export type ModelProviderConfig =
   OpenAiCompatibleProviderConfig | AnthropicCompatibleProviderConfig | GoogleGeminiProviderConfig;
+
+/** Canonical transport for configs written before `chatApi` existed. */
+export function defaultChatApiForProtocol(
+  protocol: ModelProviderConfig['protocol'],
+): ProviderChatApi {
+  switch (protocol) {
+    case 'openai-compatible':
+      return 'openai-completions';
+    case 'anthropic-compatible':
+      return 'anthropic-messages';
+    case 'google-gemini':
+      return 'google-generative-ai';
+  }
+}
+
+/** Resolve the explicit transport while preserving legacy provider configs. */
+export function resolveProviderChatApi(
+  provider: { protocol: ModelProviderConfig['protocol']; chatApi?: ProviderChatApi },
+): ProviderChatApi {
+  return provider.chatApi ?? defaultChatApiForProtocol(provider.protocol);
+}
 
 /** Default for the optional `enabled` field on providers. */
 export const DEFAULT_PROVIDER_ENABLED = true;

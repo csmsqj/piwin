@@ -1,6 +1,7 @@
 /** Web search / fetch contracts for @piwin/tools-web */
 
 import type { ModelRef } from './host.js';
+import type { NativeSearchAdapterKind } from './config.js';
 
 /**
  * Legacy single-provider id (still written as a mirror of the multi-source list).
@@ -229,6 +230,18 @@ export type SearchEvidence = {
   query?: string;
   provenance: SearchCitationProvenance;
   citations: SearchCitation[];
+  /** Bounded provider-native execution facts; never contains query, prompt, headers, or bodies. */
+  nativeDiagnostic?: NativeSearchDiagnostic;
+};
+
+/** Safe provider-native search telemetry persisted with evidence/tool cards. */
+export type NativeSearchDiagnostic = {
+  providerId: string;
+  adapter: NativeSearchAdapterKind;
+  injected: boolean;
+  eventDetected: boolean;
+  hitCount: number;
+  durationMs: number;
 };
 
 /**
@@ -245,6 +258,9 @@ export function mergeSearchEvidence(
       ...(incoming.query !== undefined ? { query: incoming.query } : {}),
       provenance: incoming.provenance,
       citations: [...incoming.citations],
+      ...(incoming.nativeDiagnostic !== undefined
+        ? { nativeDiagnostic: incoming.nativeDiagnostic }
+        : {}),
     };
   }
 
@@ -265,6 +281,11 @@ export function mergeSearchEvidence(
         : {}),
     provenance: existing.provenance,
     citations,
+    ...(existing.nativeDiagnostic !== undefined
+      ? { nativeDiagnostic: existing.nativeDiagnostic }
+      : incoming.nativeDiagnostic !== undefined
+        ? { nativeDiagnostic: incoming.nativeDiagnostic }
+        : {}),
   };
 }
 
