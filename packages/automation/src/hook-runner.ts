@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { homedir } from 'node:os';
 import type { HookDefinition, HookEventName } from '@piwin/contracts';
 
 export type HookRunContext = {
@@ -100,7 +101,7 @@ function runShellHook(hook: HookDefinition, context: HookRunContext): Promise<vo
       cwd,
       env: {
         PATH: process.env.PATH ?? '',
-        HOME: process.env.HOME ?? '',
+        HOME: homedir(),
         PIWIN_SESSION_ID: context.sessionId ?? '',
         PIWIN_PROJECT_PATH: context.projectPath ?? '',
         PIWIN_EVENT_JSON: payload,
