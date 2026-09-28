@@ -88,7 +88,7 @@ describe('mapCompactionActivityToToolRow', () => {
     expect(
       mapCompactionActivityToToolRow(baseActivity({ phase: 'running' }), 'zh-CN').presentation
         ?.actionVerb,
-    ).toBe('整理上下文');
+    ).toBe('正在整理上下文');
     expect(
       mapCompactionActivityToToolRow(baseActivity({ phase: 'succeeded' }), 'zh-CN').presentation
         ?.actionVerb,

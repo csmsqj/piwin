@@ -62,12 +62,10 @@ afterEach(() => {
 });
 
 describe('CompactionActivity', () => {
-  it('renders a running tool-chain row with a cancel action', () => {
-    const onAbort = vi.fn();
+  it('renders a running tool-chain row as a normal non-cancellable tool row', () => {
     const container = renderActivity({
       activity: activity('running'),
       locale: 'en',
-      onAbort,
     });
     const node = container.querySelector('[data-testid="compaction-activity"]');
     expect(node?.getAttribute('data-operation-id')).toBe('compact-test-1');
@@ -75,12 +73,11 @@ describe('CompactionActivity', () => {
     const card = node?.querySelector('[data-testid="tool-call-card"]');
     expect(card?.getAttribute('data-tool-status')).toBe('running');
     expect(card?.textContent).toContain('Compacting context');
-    const cancel = Array.from(container.querySelectorAll('button')).find(
-      (button) => button.textContent === 'Cancel',
-    );
-    expect(cancel).toBeDefined();
-    act(() => cancel?.click());
-    expect(onAbort).toHaveBeenCalledTimes(1);
+    expect(
+      Array.from(container.querySelectorAll('button')).some(
+        (button) => button.textContent === 'Cancel',
+      ),
+    ).toBe(false);
   });
 
   it('keeps the terminal state on the same tool-call id and folds the summary into the body', () => {

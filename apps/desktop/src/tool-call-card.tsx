@@ -13,6 +13,7 @@ import { DiffCard, type DiffCardRequest } from './diff-card';
 import { CollapsibleContentBlock } from './collapsible-content-block';
 import { TokenSpans, useHighlight } from './syntax-highlight';
 import { IconChevronDown, IconMore } from './shell-icons';
+import { COMPACTION_TOOL_NAME } from './compaction-tool-row.js';
 import { toolCallKindIcon } from './tool-call-kind-icon';
 import {
   extractCommandDescription,
@@ -269,10 +270,14 @@ export function ToolCallCard(props: ToolCallCardProps): ReactElement {
   const webSearchFailureTag = formatWebSearchFailureTag(webSearchDiagnostics, locale);
   const actionVerb = localizeBehaviorAction(behaviorId, locale, rawActionVerb);
   // Proto-01 labels the chain with tool ids (`read` / `grep` / `bash` / `write_file`),
-  // not Deck's Title-Case behavior verbs (`Read` / `Search` / `Bash`).
+  // not Deck's Title-Case behavior verbs (`Read` / `Search` / `Bash`). Synthetic
+  // compaction rows must keep their localized action verb, not the internal id.
   const inkstoneTheme = themeId.startsWith('piwin-inkstone');
+  const isCompaction = tool.toolName === COMPACTION_TOOL_NAME;
   const displayActionVerb =
-    inkstoneTheme && !tool.toolName.includes('__') ? tool.toolName : actionVerb;
+    inkstoneTheme && !tool.toolName.includes('__') && !isCompaction
+      ? tool.toolName
+      : actionVerb;
   const multiPath = targetPaths.length > 1;
   const isQueryLike =
     baseBehaviorId === 'search' ||

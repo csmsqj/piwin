@@ -525,6 +525,10 @@ export function resolveToolBehaviorId(input: ToolActivityInput): BehaviorActivit
   const verb = input.actionVerb?.trim().toLowerCase() ?? '';
   const name = input.toolName.trim().toLowerCase();
 
+  if (name === 'piwin_compact') {
+    return 'run.compacting';
+  }
+
   if (
     input.kind === 'mcp' ||
     name === 'mcp_gateway' ||

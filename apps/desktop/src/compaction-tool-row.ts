@@ -84,7 +84,7 @@ function resolveCompactionActionVerb(
 ): string {
   switch (phase) {
     case 'running':
-      return isZh ? '整理上下文' : 'Compacting context';
+      return isZh ? '正在整理上下文' : 'Compacting context';
     case 'succeeded':
       return isZh ? '已整理上下文' : 'Compacted context';
     case 'cancelled':
