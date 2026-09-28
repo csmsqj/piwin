@@ -17,11 +17,15 @@ const HELLO_FRAME = {
 };
 
 function helloScript(): string {
-  return `process.stdout.write(${JSON.stringify(JSON.stringify(HELLO_FRAME))} + '\\n'); setInterval(() => {}, 1000);`;
+  return `(function(){var fs=require('fs'),b=require('buffer').Buffer.alloc(65536);try{while(fs.readSync(3,b,0,65536)>0){}}catch(e){}})(); process.stdout.write(${JSON.stringify(JSON.stringify(HELLO_FRAME))} + '\\n'); setInterval(() => {}, 1000);`;
 }
 
 function hangUntilStdinHelloScript(): string {
   return `process.stdin.resume(); process.stdin.once('data', () => { process.stdout.write(${JSON.stringify(JSON.stringify(HELLO_FRAME))} + '\\n'); }); setInterval(() => {}, 1000);`;
+}
+
+function ignoreSigtermHelloScript(): string {
+  return `(function(){var fs=require('fs'),b=require('buffer').Buffer.alloc(65536);try{while(fs.readSync(3,b,0,65536)>0){}}catch(e){}})(); process.stdout.write(${JSON.stringify(JSON.stringify(HELLO_FRAME))} + '\\n'); process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);`;
 }
 
 function createSupervisor(
@@ -113,6 +117,24 @@ describe('AgentWorkerSupervisor', () => {
     } finally {
       await supervisor.dispose();
       await firstSettled;
+    }
+  }, 10_000);
+
+  it('releaseWorker resolves even when the worker ignores SIGTERM', async () => {
+    const supervisor = createSupervisor(
+      { maxActiveWorkers: 1, shutdownTimeoutMs: 250 },
+      ignoreSigtermHelloScript(),
+    );
+    try {
+      await supervisor.acquireWorker('session-1', 'generation-1');
+      const start = Date.now();
+      await supervisor.releaseWorker('session-1', 'generation-1');
+      expect(Date.now() - start).toBeLessThan(5_000);
+      expect(supervisor.getStatus().activeWorkers).toBe(0);
+      // The freed pair must be immediately reusable, not pinned by a hung close.
+      await supervisor.acquireWorker('session-2', 'generation-1');
+    } finally {
+      await supervisor.dispose();
     }
   }, 10_000);
 });

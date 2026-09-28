@@ -341,13 +341,25 @@ export class AgentWorkerSupervisor {
     if (!managed || managed.disposed) return;
 
     managed.disposed = true;
+    // Unregister before awaiting so the slot is free even if close() stalls.
+    this.workers.delete(workerId);
+    this.bySessionGeneration.delete(key);
     try {
-      await managed.client.close();
+      // Race graceful shutdown against a force-kill timeout, mirroring
+      // dispose(): a hung worker must not pin releaseWorker (and the
+      // caller's teardown) forever.
+      await Promise.race([
+        managed.client.close(),
+        new Promise<void>((resolve) => setTimeout(resolve, this.settings.shutdownTimeoutMs)),
+      ]);
     } catch {
       // best-effort close
     }
-    this.workers.delete(workerId);
-    this.bySessionGeneration.delete(key);
+    try {
+      managed.client.forceKill();
+    } catch {
+      // Ignore
+    }
   }
 
   /** Release every worker belonging to one runtime generation. */
