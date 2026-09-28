@@ -32,7 +32,7 @@ import type {
   SessionCapabilitySnapshot,
   SessionToolFamily,
 } from '@piwin/contracts';
-import { DEFAULT_AGENT_MODE_SYSTEM_PROMPT, isSubscriptionOauthProviderId } from '@piwin/contracts';
+import { DEFAULT_AGENT_MODE_SYSTEM_PROMPT } from '@piwin/contracts';
 import { listEnabledServers, loadMcpConfig } from '@piwin/mcp';
 import { compileToolPolicy } from './blueprint-agent-tool-policy.js';
 import { compileConversationToolPolicy } from './blueprint-conversation-tool-policy.js';
@@ -83,6 +83,11 @@ import type { SessionBlueprint } from './session-blueprint.js';
 import { formatSkillDiscoveryPrompt } from './skills-system-prompt.js';
 import { formatCatalogSystemPrompt } from './tool-catalog/catalog-brief.js';
 import { windowsShellPrompt } from './tools/windows-shell-prompt.js';
+import {
+  isKnownSubscriptionProviderId,
+  subscriptionExtensionResources,
+  withSubscriptionExtensions,
+} from './blueprint-subscription-extensions.js';
 
 // This module now orchestrates: resource discovery, provider envelopes, and
 // tool-policy compilation live in their own modules. They are re-exported here
@@ -287,9 +292,9 @@ async function compileAgentCapabilityPlan(
     familyDisabled: {},
     projectTrusted: location.scope.kind === 'project' && projectTrusted,
   });
-  const resourceManifest = buildResourceManifest(
-    resourceResolution.activeEntries,
-    resourceResolution.catalog,
+  const resourceManifest = withSubscriptionExtensions(
+    buildResourceManifest(resourceResolution.activeEntries, resourceResolution.catalog),
+    options.subscriptionAccounts,
   );
   const resourcePolicy = resourceResolution.policy;
 
@@ -428,7 +433,7 @@ async function assembleCompiledBlueprint(
     const resolved = resolveChatModel(config, input.model, options.subscriptionAccounts);
     if (
       !resolved &&
-      isSubscriptionOauthProviderId(input.model.providerId) &&
+      isKnownSubscriptionProviderId(input.model.providerId, options.subscriptionAccounts) &&
       !config.providers.some((provider) => provider.id === input.model?.providerId)
     ) {
       throw Object.assign(
@@ -444,7 +449,7 @@ async function assembleCompiledBlueprint(
     const usable = new Set(options.usableSubscriptionProviderIds);
     const blocked = requiredProviderIds.find(
       (providerId) =>
-        isSubscriptionOauthProviderId(providerId) &&
+        isKnownSubscriptionProviderId(providerId, options.subscriptionAccounts) &&
         !config.providers.some((provider) => provider.id === providerId) &&
         !usable.has(providerId),
     );
@@ -462,6 +467,9 @@ async function assembleCompiledBlueprint(
       ? { usableSubscriptionProviderIds: options.usableSubscriptionProviderIds }
       : {}),
     ...(options.secretResolver ? { secretResolver: options.secretResolver } : {}),
+    ...(options.subscriptionAccounts?.catalogModelIds
+      ? { catalogModelIdsByProvider: options.subscriptionAccounts.catalogModelIds }
+      : {}),
   });
   const providers = providerEnvelope.providers;
 
@@ -538,9 +546,11 @@ function compileConversationPlan(
     allowProjectAgentsFiles: false,
     allowProjectSystemPrompts: false,
   };
+  // Pure chat discovers no resources, but subscription-owning extensions are
+  // provider plumbing, not workspace context, so they still load.
   const resourceManifest: ResourceManifest = {
     skills: [],
-    extensions: [],
+    extensions: subscriptionExtensionResources(options.subscriptionAccounts),
     prompts: [],
     diagnostics: [],
   };

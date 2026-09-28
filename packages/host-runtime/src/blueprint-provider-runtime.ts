@@ -35,6 +35,7 @@ export type ProviderEnvelopeCompileOptions = {
   requiredProviderIds?: readonly string[];
   usableSubscriptionProviderIds?: readonly string[];
   secretResolver?: Pick<SecretResolver, 'resolveProviderSecret'>;
+  catalogModelIdsByProvider?: ReadonlyMap<string, readonly string[]>;
 };
 
 /**
@@ -56,7 +57,11 @@ export async function buildProviderEnvelope(
   const envelope: SerializableProviderRuntime[] = [];
   const providerSecrets: EphemeralProviderSecret[] = [];
 
-  for (const provider of selectProvidersForCompilation(config, options.requiredProviderIds)) {
+  for (const provider of selectProvidersForCompilation(
+    config,
+    options.requiredProviderIds,
+    options.usableSubscriptionProviderIds,
+  )) {
     const built = await buildSingleProviderRuntime(
       provider,
       options.allowInlineProviderSecrets,
@@ -73,15 +78,32 @@ export async function buildProviderEnvelope(
       config,
       options.requiredProviderIds,
       options.usableSubscriptionProviderIds,
+      options.catalogModelIdsByProvider,
     ),
   );
 
   return { providers: envelope, providerSecrets };
 }
 
+/**
+ * Built-in subscription ids are always known. Extension-owned ids are known
+ * only through the usable-account snapshot (derived from enabled extension
+ * claims), so no extension id is hardcoded here.
+ */
+function isCompilableSubscriptionProviderId(
+  providerId: string,
+  usableSubscriptionProviderIds: readonly string[] | undefined,
+): boolean {
+  return (
+    isSubscriptionOauthProviderId(providerId) ||
+    (usableSubscriptionProviderIds?.includes(providerId) ?? false)
+  );
+}
+
 function selectProvidersForCompilation(
   config: PiwinConfig,
   requiredProviderIds: readonly string[] | undefined,
+  usableSubscriptionProviderIds: readonly string[] | undefined,
 ): ModelProviderConfig[] {
   const enabledProviders = getEnabledProviders(config).filter(isChannelProvider);
   if (requiredProviderIds === undefined) {
@@ -93,7 +115,9 @@ function selectProvidersForCompilation(
   );
   const providersById = new Map(enabledProviders.map((provider) => [provider.id, provider]));
   const missingProviderId = uniqueIds.find(
-    (providerId) => !providersById.has(providerId) && !isSubscriptionOauthProviderId(providerId),
+    (providerId) =>
+      !providersById.has(providerId) &&
+      !isCompilableSubscriptionProviderId(providerId, usableSubscriptionProviderIds),
   );
   if (missingProviderId) {
     throw new Error(`Configured provider is unavailable: ${missingProviderId}`);
@@ -181,6 +205,7 @@ export function oauthRuntimesForCompilation(
   config: Pick<PiwinConfig, 'providers'>,
   requiredProviderIds: readonly string[] | undefined,
   usableSubscriptionProviderIds?: readonly string[],
+  catalogModelIdsByProvider?: ReadonlyMap<string, readonly string[]>,
 ): SerializableProviderRuntime[] {
   if (requiredProviderIds === undefined) {
     return [];
@@ -197,7 +222,10 @@ export function oauthRuntimesForCompilation(
       : new Set(usableSubscriptionProviderIds);
   return [...new Set(requiredProviderIds)]
     .filter((providerId) => {
-      if (!isSubscriptionOauthProviderId(providerId) || channelIds.has(providerId)) {
+      if (
+        !isCompilableSubscriptionProviderId(providerId, usableSubscriptionProviderIds) ||
+        channelIds.has(providerId)
+      ) {
         return false;
       }
       return usable === undefined || usable.has(providerId);
@@ -219,6 +247,12 @@ export function oauthRuntimesForCompilation(
               : {}),
             ...(model.capabilities ? { capabilities: [...model.capabilities] } : {}),
           })) ?? [];
+      if (models.length === 0 && catalogModelIdsByProvider?.has(providerId)) {
+        const fallbackIds = catalogModelIdsByProvider.get(providerId) ?? [];
+        for (const id of fallbackIds) {
+          models.push({ id });
+        }
+      }
       const runtime: SerializableProviderRuntime = {
         providerId,
         models,
@@ -239,6 +273,7 @@ function buildProviderRuntime(
   return {
     providerId: provider.id,
     protocol: provider.protocol,
+    ...(provider.chatApi ? { chatApi: provider.chatApi } : {}),
     baseUrl: provider.baseUrl,
     ...(provider.headers ? { headers: provider.headers } : {}),
     models: provider.models

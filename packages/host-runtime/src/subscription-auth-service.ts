@@ -43,7 +43,11 @@ import {
 } from './seed-subscription-provider.js';
 import { resolveConfiguredDefaultModelRef } from './provider-helpers.js';
 import { selectSubscriptionLoginMethod } from './select-subscription-login-method.js';
-import { readSubscriptionExtensionProviders } from './subscription-extension-providers.js';
+import {
+  readSubscriptionExtensionProviders,
+  type SubscriptionExtensionProvider,
+} from './subscription-extension-providers.js';
+import { eventToPayload, promptToPayload } from './subscription-auth-prompt-payload.js';
 import { SubscriptionAuthWatcher } from './subscription-auth-watcher.js';
 import { mergeSubscriptionCatalogModels, type ConfiguredChatModels } from './subscription-model-overlay.js';
 import { assertCodexCallbackPortFree } from './subscription-oauth-callback-port.js';
@@ -83,6 +87,8 @@ const LIVE_ACCOUNT_STATES = new Set(['logged-in', 'logging-in', 'sync-error', 'n
 export class SubscriptionAuthService {
   private port: SubscriptionAuthPort | undefined;
   private portExtensionFingerprint: string | undefined;
+  /** Last enabled extension claims; sync callers (reauth, prompts) read this. */
+  private extensionProviders: readonly SubscriptionExtensionProvider[] = [];
   private extensionProjectionPending = false;
   private readonly reloadPortOnExtensions: boolean;
   private readonly portFactory: () => Promise<SubscriptionAuthPort>;
@@ -147,8 +153,10 @@ export class SubscriptionAuthService {
       options.port ?? createSubscriptionAuthPort({
         authPath: paths.authPath,
         modelsPath: paths.modelsPath,
-        extensionPaths: (await readSubscriptionExtensionProviders(getPiwinRoot(options.piwinRoot)))
-          .map((provider) => provider.entryPath),
+        extensionProviders: (await this.readExtensionProviders()).map((provider) => ({
+          providerId: provider.providerId,
+          entryPath: provider.entryPath,
+        })),
       }));
   }
 
@@ -171,7 +179,7 @@ export class SubscriptionAuthService {
   }
 
   markNeedsReauth(providerId: string): void {
-    if (!isSubscriptionOauthProviderId(providerId)) {
+    if (!this.isKnownProvider(providerId)) {
       return;
     }
     this.needsReauthProviderIds.add(providerId);
@@ -221,7 +229,8 @@ export class SubscriptionAuthService {
       }
       catalogModelIds.set(account.providerId, this.catalogModelIds(account.providerId));
     }
-    return { accounts, catalogModelIds };
+    // readAccounts refreshed the extension snapshot; hand compilers the same one.
+    return { accounts, catalogModelIds, extensionProviders: this.extensionProviders };
   }
 
   usableSubscriptionProviderIds(): string[] {
@@ -264,17 +273,15 @@ export class SubscriptionAuthService {
   }
 
   async login(input: AuthLoginInput): Promise<{ loginId: string } | { error: string; code: string }> {
-    if (!isSubscriptionOauthProviderId(input.providerId)) {
+    // Built-in ids never need the extension store; extension ids use a fresh claim list.
+    if (!isSubscriptionOauthProviderId(input.providerId)) await this.readExtensionProviders();
+    if (!this.isKnownProvider(input.providerId)) {
       return {
-        error: `Unsupported subscription provider: ${input.providerId}`,
+        error:
+          `Unsupported subscription provider: ${input.providerId}. ` +
+          'Extension providers need their extension installed and enabled first.',
         code: 'unsupported-subscription-provider',
       };
-    }
-    if (input.providerId === 'commandcode' &&
-      !(await readSubscriptionExtensionProviders(getPiwinRoot(this.piwinRoot)))
-        .some((provider) => provider.providerId === 'commandcode')) {
-      return { error: 'Install and enable the Command Code extension first.',
-        code: 'unsupported-subscription-provider' };
     }
     if (this.active) {
       return { error: 'A subscription login is already in progress.', code: 'auth-busy' };
@@ -388,7 +395,8 @@ export class SubscriptionAuthService {
     providerId: string,
     cancelRuns?: (providerId: string) => Promise<void>,
   ): Promise<{ error?: string; code?: string }> {
-    if (!isSubscriptionOauthProviderId(providerId)) {
+    if (!isSubscriptionOauthProviderId(providerId)) await this.readExtensionProviders();
+    if (!this.isKnownProvider(providerId)) {
       return {
         error: `Unsupported subscription provider: ${providerId}`,
         code: 'unsupported-subscription-provider',
@@ -591,7 +599,12 @@ export class SubscriptionAuthService {
     }
     if (
       prompt.message?.includes('press Enter for browser login') ||
-      (active.providerId === 'commandcode' && prompt.type === 'text' && !active.authUrl && prompt.message?.includes('browser login'))
+      // Extension OAuth flows commonly offer "browser login or paste a key";
+      // shells drive the browser path, so accept it before any URL arrives.
+      (this.isExtensionProvider(active.providerId) &&
+        prompt.type === 'text' &&
+        !active.authUrl &&
+        prompt.message?.includes('browser login'))
     ) {
       return '';
     }
@@ -689,12 +702,29 @@ export class SubscriptionAuthService {
       ];
     }
     const config = await this.loadConfig();
-    const extensionProviders = await readSubscriptionExtensionProviders(getPiwinRoot(this.piwinRoot));
+    const extensionProviders = await this.readExtensionProviders();
     return buildSubscriptionAccounts(credentials, config, {
       ...(this.active ? { loggingInProviderId: this.active.providerId } : {}),
       syncErrorProviderIds: this.syncErrorProviderIds,
       needsReauthProviderIds: this.needsReauthProviderIds,
-    }, new Set(extensionProviders.map((provider) => provider.providerId)));
+    }, extensionProviders.map((provider) => ({
+      providerId: provider.providerId,
+      displayName: extensionDisplayName(provider, port),
+    })));
+  }
+
+  private async readExtensionProviders(): Promise<readonly SubscriptionExtensionProvider[]> {
+    this.extensionProviders = await readSubscriptionExtensionProviders(getPiwinRoot(this.piwinRoot));
+    return this.extensionProviders;
+  }
+
+  private isExtensionProvider(providerId: string): boolean {
+    return this.extensionProviders.some((provider) => provider.providerId === providerId);
+  }
+
+  /** Built-in Host subscription ids plus ids claimed by enabled extensions. */
+  private isKnownProvider(providerId: string): boolean {
+    return isSubscriptionOauthProviderId(providerId) || this.isExtensionProvider(providerId);
   }
 
   private async emitUpdatedIfChanged(): Promise<void> {
@@ -887,12 +917,18 @@ export class SubscriptionAuthService {
   }
 
   private async ensureProviderForAccount(providerId: string): Promise<Pick<AuthLoginFinishedData, 'followUp'>> {
-    if (!isSubscriptionOauthProviderId(providerId)) {
+    if (!this.isKnownProvider(providerId)) {
       return {};
     }
     const port = await this.ensurePort();
     const config = await this.loadConfig();
-    const upserted = upsertSubscriptionProvider(config, providerId, this.chatCatalogFor(providerId));
+    const extension = this.extensionProviders.find((provider) => provider.providerId === providerId);
+    const upserted = upsertSubscriptionProvider(
+      config,
+      providerId,
+      this.chatCatalogFor(providerId),
+      extension ? extensionDisplayName(extension, port) : undefined,
+    );
     const { config: next, followUp } = applySubscriptionLoginDefaults(upserted, providerId);
     if (next !== config) {
       await this.saveConfig(next);
@@ -922,7 +958,7 @@ export class SubscriptionAuthService {
 
   private async ensurePort(): Promise<SubscriptionAuthPort> {
     if (!this.active && this.reloadPortOnExtensions && this.port) {
-      const sources = await readSubscriptionExtensionProviders(getPiwinRoot(this.piwinRoot));
+      const sources = await this.readExtensionProviders();
       const fingerprint = sources.map((source) => source.entryPath).join('|');
       if (fingerprint !== this.portExtensionFingerprint) {
         this.port.dispose();
@@ -933,7 +969,7 @@ export class SubscriptionAuthService {
     }
     if (!this.port) {
       if (this.reloadPortOnExtensions && this.portExtensionFingerprint === undefined) {
-        const sources = await readSubscriptionExtensionProviders(getPiwinRoot(this.piwinRoot));
+        const sources = await this.readExtensionProviders();
         this.portExtensionFingerprint = sources.map((source) => source.entryPath).join('|');
         this.extensionProjectionPending = sources.length > 0;
       }
@@ -944,60 +980,12 @@ export class SubscriptionAuthService {
   }
 }
 
-function promptToPayload(
-  active: ActiveLogin,
-  promptId: string,
-  prompt: HostAuthPrompt,
-): AuthPromptPayload {
-  return {
-    loginId: active.loginId,
-    promptId,
-    providerId: active.providerId,
-    kind: prompt.type,
-    message: prompt.message,
-    expectsResponse: true,
-    ...(prompt.placeholder !== undefined ? { placeholder: prompt.placeholder } : {}),
-    ...(prompt.options !== undefined ? { options: prompt.options } : {}),
-  };
-}
-
-function eventToPayload(
-  active: ActiveLogin,
-  promptId: string,
-  event: HostAuthEvent,
-): AuthPromptPayload {
-  const base = {
-    loginId: active.loginId,
-    promptId,
-    providerId: active.providerId,
-    kind: event.type,
-    expectsResponse: false as const,
-  };
-  switch (event.type) {
-    case 'auth_url':
-      return {
-        ...base,
-        url: event.url,
-        ...(event.instructions !== undefined ? { instructions: event.instructions } : {}),
-      };
-    case 'device_code':
-      return {
-        ...base,
-        userCode: event.userCode,
-        verificationUri: event.verificationUri,
-        ...(event.intervalSeconds !== undefined ? { intervalSeconds: event.intervalSeconds } : {}),
-        ...(event.expiresInSeconds !== undefined
-          ? { expiresInSeconds: event.expiresInSeconds }
-          : {}),
-      };
-    case 'progress':
-    case 'info':
-      return {
-        ...base,
-        message: event.message,
-        ...(event.type === 'info' && event.links !== undefined ? { links: event.links } : {}),
-      };
-  }
+/** Manifest name, then the extension's own Pi registration name, then the id. */
+function extensionDisplayName(
+  provider: SubscriptionExtensionProvider,
+  port: Pick<SubscriptionAuthPort, 'getProviderName'>,
+): string {
+  return provider.displayName ?? port.getProviderName?.(provider.providerId) ?? provider.providerId;
 }
 
 export { LIVE_ACCOUNT_STATES };

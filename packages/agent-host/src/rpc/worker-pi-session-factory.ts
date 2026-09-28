@@ -309,6 +309,72 @@ export function buildWorkerProviderRegistration(
   return registration;
 }
 
+/** Subset of Pi's `ExtensionRuntime` queue that `DefaultResourceLoader` exposes. */
+type PendingExtensionProviderQueue = {
+  pendingProviderRegistrations: Array<{ name: string; config: unknown; extensionPath: string }>;
+  pendingNativeProviderRegistrations: Array<{ provider: unknown; extensionPath: string }>;
+};
+
+type ExtensionProviderSink = {
+  registerProvider: (providerId: string, config: never) => void;
+  registerNativeProvider?: (provider: never) => void;
+  refresh: (options: { allowNetwork: boolean }) => Promise<unknown>;
+};
+
+function readPendingProviderQueue(resourceLoader: unknown): PendingExtensionProviderQueue | undefined {
+  const getExtensions = (resourceLoader as { getExtensions?: unknown } | undefined)?.getExtensions;
+  if (typeof getExtensions !== 'function') return undefined;
+  const runtime = (getExtensions.call(resourceLoader) as { runtime?: unknown } | undefined)?.runtime;
+  if (!runtime || typeof runtime !== 'object') return undefined;
+  const queue = runtime as Partial<PendingExtensionProviderQueue>;
+  return Array.isArray(queue.pendingProviderRegistrations) &&
+    Array.isArray(queue.pendingNativeProviderRegistrations)
+    ? (queue as PendingExtensionProviderQueue)
+    : undefined;
+}
+
+/**
+ * Mirror Pi's `createAgentSessionServices`: extensions queue
+ * `pi.registerProvider(...)` during load and Pi normally flushes that queue
+ * into the model runtime before resolving the session model. piwin supplies
+ * its own resource loader and model runtime, so without this flush a model
+ * owned by an extension (e.g. an extension subscription provider) is unknown
+ * at session creation. The queue is cleared afterwards, exactly as Pi does,
+ * so bindCore does not register the same providers twice.
+ */
+export async function flushExtensionProviderRegistrations(
+  resourceLoader: unknown,
+  modelRuntime: ExtensionProviderSink | PiModelRuntime,
+): Promise<void> {
+  const queue = readPendingProviderQueue(resourceLoader);
+  if (!queue) return;
+  const sink = modelRuntime as ExtensionProviderSink;
+  let registered = false;
+  for (const { name, config, extensionPath } of queue.pendingProviderRegistrations) {
+    try {
+      sink.registerProvider(name, config as never);
+      registered = true;
+    } catch (error) {
+      console.warn(`[piwin-agent-host] extension ${extensionPath} provider ${name} failed to register`, error);
+    }
+  }
+  queue.pendingProviderRegistrations = [];
+  if (typeof sink.registerNativeProvider === 'function') {
+    for (const { provider, extensionPath } of queue.pendingNativeProviderRegistrations) {
+      try {
+        sink.registerNativeProvider(provider as never);
+        registered = true;
+      } catch (error) {
+        console.warn(`[piwin-agent-host] extension ${extensionPath} native provider failed to register`, error);
+      }
+    }
+    queue.pendingNativeProviderRegistrations = [];
+  }
+  if (registered) {
+    await sink.refresh({ allowNetwork: false });
+  }
+}
+
 /**
  * Create a `createPiSession` function for the `WorkerSessionRuntime`.
  *
@@ -358,6 +424,7 @@ export function createWorkerPiSessionFactory(
         }
       }
     }
+    await flushExtensionProviderRegistrations(resourceLoader, modelRuntime);
     await modelRuntime.refresh({ allowNetwork: false });
 
     let settingsManager = createPiwinSettingsManager(

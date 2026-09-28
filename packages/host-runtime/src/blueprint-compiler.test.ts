@@ -346,6 +346,76 @@ describe('compileBlueprintForWorker', () => {
     expect(result.blueprint.activePromptPaths).toEqual(['/tmp/prompts/p1']);
   });
 
+  describe('extension-owned subscription providers', () => {
+    const extensionAccounts = (state: 'logged-in' | 'logged-out') => ({
+      accounts: [
+        {
+          providerId: 'acme-cloud',
+          surface: 'v1' as const,
+          state,
+          extension: { displayName: 'Acme Cloud' },
+        },
+      ],
+      catalogModelIds: new Map([['acme-cloud', ['acme-large']]]),
+      extensionProviders: [{ providerId: 'acme-cloud', entryPath: '/tmp/ext/acme/index.ts' }],
+    });
+
+    it('loads the owning extension and compiles an OAuth runtime in pure chat', async () => {
+      const subscriptionAccounts = extensionAccounts('logged-in');
+      const result = await compileBlueprintForWorker(
+        { scope: generalScope, model: { providerId: 'acme-cloud', modelId: 'acme-large' } },
+        {
+          config: createConfig(),
+          subscriptionAccounts,
+          usableSubscriptionProviderIds: ['acme-cloud'],
+          discoverResources: async () => ({ skillPaths: [], extensionPaths: [], promptPaths: [] }),
+        },
+      );
+      expect(result.blueprint.activeExtensionPaths).toEqual(['/tmp/ext/acme/index.ts']);
+      expect(result.providers).toEqual([
+        {
+          providerId: 'acme-cloud',
+          models: [{ id: 'acme-large' }],
+          auth: { kind: 'oauth', providerId: 'acme-cloud' },
+        },
+      ]);
+    });
+
+    it('adds the owning extension once alongside discovered agent extensions', async () => {
+      const result = await compileBlueprintForWorker(
+        { scope: agentProjectScope, model: { providerId: 'acme-cloud', modelId: 'acme-large' } },
+        {
+          config: createConfig(),
+          subscriptionAccounts: extensionAccounts('logged-in'),
+          usableSubscriptionProviderIds: ['acme-cloud'],
+          discoverResources: async () => ({
+            skillPaths: [],
+            extensionPaths: ['/tmp/ext/e1', '/tmp/ext/acme/index.ts'],
+            promptPaths: [],
+          }),
+        },
+      );
+      expect([...result.blueprint.activeExtensionPaths].sort()).toEqual([
+        '/tmp/ext/acme/index.ts',
+        '/tmp/ext/e1',
+      ]);
+    });
+
+    it('reports a signed-out extension provider as an auth problem', async () => {
+      await expect(
+        compileBlueprintForWorker(
+          { scope: generalScope, model: { providerId: 'acme-cloud', modelId: 'acme-large' } },
+          {
+            config: createConfig(),
+            subscriptionAccounts: extensionAccounts('logged-out'),
+            usableSubscriptionProviderIds: [],
+            discoverResources: async () => ({ skillPaths: [], extensionPaths: [], promptPaths: [] }),
+          },
+        ),
+      ).rejects.toMatchObject({ code: 'provider-authentication' });
+    });
+  });
+
   it('asks Agent sessions to load matching skills only when skills are active', async () => {
     const compile = (skillPaths: string[]) =>
       compileBlueprintForWorker(
@@ -545,6 +615,21 @@ describe('compileBlueprintForWorker', () => {
     }
     expect(result.providers[0]?.models).toHaveLength(1);
     expect(result.providers[0]?.models[0]?.id).toBe('gpt-4');
+    expect(result.providers[0]).not.toHaveProperty('chatApi');
+  });
+
+  it('carries the provider chat transport into the envelope', async () => {
+    const base = createConfig();
+    const [provider] = base.providers;
+    if (!provider || provider.protocol !== 'openai-compatible') throw new Error('fixture drift');
+    const result = await compileBlueprintForWorker(
+      { scope: generalScope },
+      {
+        config: { ...base, providers: [{ ...provider, chatApi: 'openai-responses' }] },
+        discoverResources: async () => ({ skillPaths: [], extensionPaths: [], promptPaths: [] }),
+      },
+    );
+    expect(result.providers[0]?.chatApi).toBe('openai-responses');
   });
 
   it('preserves configured thinking levels in the provider envelope', async () => {
@@ -1262,7 +1347,7 @@ describe('compileBlueprintForWorker', () => {
             name: 'xAI local',
             baseUrl: 'https://api.example.test/v1',
             apiKeyEnv: 'XAI_API_KEY',
-            models: [{ id: 'grok-4.5', capabilities: ['chat', 'native-web-search'] }],
+            models: [{ id: 'grok-4.5', capabilities: ['chat', 'native-web-search'], nativeSearchAdapter: 'openai-web-search-options' }],
           },
         ],
       });
@@ -1446,7 +1531,7 @@ describe('compileBlueprintForWorker', () => {
             protocol: 'google-gemini' as const,
             name: 'Gemini',
             baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
-            models: [{ id: 'gemini-search', capabilities: ['native-web-search'] }],
+            models: [{ id: 'gemini-search', capabilities: ['native-web-search'], nativeSearchAdapter: 'google-search-tool' }],
           },
         ],
       });

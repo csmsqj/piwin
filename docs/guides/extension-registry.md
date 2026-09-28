@@ -6,4 +6,16 @@
 
 自建索引可以在 Host 环境中设置 `PIWIN_EXTENSION_REGISTRY_URL`。条目格式、发布和改装规则见扩展仓库的 [CONTRIBUTING](https://github.com/mimimaster/piwin-extensions/blob/main/CONTRIBUTING.md)。
 
-Command Code 扩展的 `piwin.json` 声明 `authProvider: "commandcode"`。只有已安装且启用的选中版本能让 Host 显示该授权入口；它仍以 Host 用户权限运行。当前此声明只支持 Command Code，不能用它添加任意 OAuth 提供商。
+## 提供订阅授权的扩展
+
+任何扩展都可以在 `piwin.json` 里声明一个订阅提供商，例如 Command Code 声明 `authProvider: "commandcode"`，Kiro 声明 `authProvider: "kiro"`：
+
+```json
+{ "authProvider": "acme-cloud", "authProviderName": "Acme Cloud" }
+```
+
+- `authProvider`：小写字母、数字和连字符，不能与 piwin 内置订阅 id（如 `openai-codex`、`anthropic`）重名。不合规的声明会被忽略；两个已启用扩展声明同一个 id 时 Host 报错。
+- `authProviderName`：可选，授权卡片的显示名。省略时使用扩展在 `pi.registerProvider` 里写的 `name`。
+- 扩展自己调用 `pi.registerProvider(<authProvider>, { oauth, models, ... })` 提供登录流程和模型目录。Host 只注册声明的那个 id。
+
+只有已安装且启用的选中版本能让 Host 显示该授权入口，停用或卸载后卡片和模型随之消失。扩展以 Host 用户权限运行。piwin 源码不针对任何扩展 id 做特殊处理，新增订阅扩展无需修改 piwin。

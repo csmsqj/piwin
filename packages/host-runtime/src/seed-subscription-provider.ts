@@ -24,7 +24,6 @@ import {
   SUBSCRIPTION_OAUTH_PROVIDER_META,
   V1_SUBSCRIPTION_PROVIDER_META,
   type SubscriptionAccount,
-  type SubscriptionOauthProviderId,
   type V1SubscriptionProviderId,
 } from '@piwin/contracts';
 import { isSubscriptionAccountUsable } from './resolve-chat-model.js';
@@ -94,10 +93,14 @@ export function mergeSubscriptionCatalog(
   return merged;
 }
 
+/**
+ * `displayName` names extension-owned providers; built-in ids use contract meta.
+ */
 export function upsertSubscriptionProvider(
   config: PiwinConfig,
-  providerId: SubscriptionOauthProviderId,
+  providerId: string,
   catalog: readonly SubscriptionCatalogSeedModel[],
+  displayName?: string,
 ): PiwinConfig {
   const existing = config.providers.find((provider) => provider.id === providerId);
   if (existing && isChannelProvider(existing)) {
@@ -110,6 +113,7 @@ export function upsertSubscriptionProvider(
       isV1SubscriptionProviderId(providerId) ? subscriptionSurfaceExtras(providerId) : [],
     ),
     existing,
+    displayName,
   );
   if (existing && subscriptionProvidersEqual(existing, nextProvider)) {
     return config;
@@ -128,11 +132,17 @@ export function ensureSubscriptionProviders(
   const usable = new Set<string>();
   let next = config;
   for (const account of accounts) {
-    if (!isSubscriptionAccountUsable(account) || !isSubscriptionOauthProviderId(account.providerId)) {
+    // Accounts are already limited to built-in ids plus enabled extension claims.
+    if (!isSubscriptionAccountUsable(account)) {
       continue;
     }
     usable.add(account.providerId);
-    next = upsertSubscriptionProvider(next, account.providerId, catalogFor(account.providerId));
+    next = upsertSubscriptionProvider(
+      next,
+      account.providerId,
+      catalogFor(account.providerId),
+      account.extension?.displayName,
+    );
   }
   return dropUnusableSubscriptionProviders(next, usable);
 }
@@ -162,9 +172,10 @@ function withoutDanglingChatDefault(config: PiwinConfig): PiwinConfig {
 }
 
 function mergeSubscriptionProvider(
-  providerId: SubscriptionOauthProviderId,
+  providerId: string,
   catalog: readonly SubscriptionCatalogSeedModel[],
   existing: ModelProviderConfig | undefined,
+  displayName: string | undefined,
 ): ModelProviderConfig {
   const previousById = new Map((existing?.models ?? []).map((model) => [model.id, model]));
   const models: ModelConfigEntry[] = [];
@@ -177,11 +188,13 @@ function mergeSubscriptionProvider(
   for (const leftover of previousById.values()) {
     models.push(leftover);
   }
-  const meta = SUBSCRIPTION_OAUTH_PROVIDER_META[providerId];
+  const builtinName = isSubscriptionOauthProviderId(providerId)
+    ? SUBSCRIPTION_OAUTH_PROVIDER_META[providerId].name
+    : undefined;
   const claudeCode = isClaudeCodeOauthProviderId(providerId);
   const provider: ModelProviderConfig = {
     id: providerId,
-    name: existing?.name?.trim() || meta.name,
+    name: existing?.name?.trim() || builtinName || displayName?.trim() || providerId,
     // Claude Code path talks Anthropic Messages + OAuth shaping; plain Claude stays oauth://.
     protocol: claudeCode ? 'anthropic-compatible' : 'openai-compatible',
     baseUrl: claudeCode ? 'https://api.anthropic.com' : subscriptionOauthOrigin(providerId),

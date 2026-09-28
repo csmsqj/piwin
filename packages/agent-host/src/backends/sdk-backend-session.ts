@@ -14,6 +14,7 @@ import {
 import {
   buildWorkerProviderRegistration,
   createBlueprintResourceLoader,
+  flushExtensionProviderRegistrations,
 } from '../rpc/worker-pi-session-factory.js';
 import { createPiSessionEventMapper } from '../event-map.js';
 import { bindExtensionUiToPiSession, createExtensionUiContext } from '../extension-ui-bridge.js';
@@ -102,6 +103,7 @@ export async function createBackendSdkSession(
       input.providers,
       input.blueprint.capabilitySnapshot.searchRoute,
     ));
+  await flushExtensionProviderRegistrations(resourceLoader, modelRuntime);
   const capabilitySnapshot = input.blueprint.capabilitySnapshot;
   let activeRunId: string | undefined;
   const customTools = toPiBackendCustomTools(

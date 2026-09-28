@@ -184,6 +184,57 @@ describe('OauthPage & SubscriptionAccountsPanel', () => {
     ).toBeNull();
   });
 
+  it('renders an extension-owned account card from Host metadata without a quota toggle', async () => {
+    const mockRequest = vi.fn(async (command) => {
+      const ext = extensionListOk(command);
+      if (ext) return ext;
+      if (command.type === 'auth/status') {
+        return {
+          type: 'response' as const,
+          command: command.type,
+          success: true as const,
+          data: {
+            accounts: [
+              {
+                providerId: 'acme-cloud',
+                surface: 'v1',
+                state: 'logged-in',
+                extension: { displayName: 'Acme Cloud' },
+              },
+            ],
+          },
+        };
+      }
+      return { type: 'response' as const, command: command.type, success: true as const, data: {} };
+    });
+    const contextValue = {
+      config: baseConfig(),
+      hostClient: { request: mockRequest, subscribe: vi.fn(() => () => {}), getTransport: () => 'local' },
+      setError: vi.fn(),
+      setInfo: vi.fn(),
+    } as unknown as SettingsContextValue;
+
+    await act(async () => {
+      root!.render(
+        <PiwinUiProvider manifest={PIWIN_APPEARANCE_DARK}>
+          <DesktopLocaleProvider locale="zh-CN" onLocaleChange={() => {}}>
+            <SettingsProvider value={contextValue}>
+              <OauthPage />
+            </SettingsProvider>
+          </DesktopLocaleProvider>
+        </PiwinUiProvider>,
+      );
+    });
+
+    const card = container!.querySelector('[data-testid="subscription-account-acme-cloud"]');
+    expect(card?.textContent).toContain('Acme Cloud');
+    expect(card?.textContent).toContain('社区扩展');
+    expect(
+      container!.querySelector('[data-testid="subscription-account-state-acme-cloud"]')?.textContent,
+    ).toContain('已连接');
+    expect(container!.querySelector('[data-testid="subscription-quota-toggle-acme-cloud"]')).toBeNull();
+  });
+
   it('toasts the extra-usage warning after Claude OAuth login finishes', async () => {
     let push: ((message: { type: string; result?: { loginId: string; providerId: string; ok: boolean } }) => void) | undefined;
     const setInfo = vi.fn();

@@ -154,6 +154,7 @@ export type {
 export {
   createWorkerPiSessionFactory,
   createBlueprintResourceLoader,
+  flushExtensionProviderRegistrations,
   registerWorkerProviders,
   buildWorkerProviderRegistration,
 } from './rpc/worker-pi-session-factory.js';

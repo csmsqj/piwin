@@ -88,7 +88,14 @@ export function resolveDefaultModelRef(
   if (configured) {
     return configured;
   }
-  for (const providerId of SUBSCRIPTION_DEFAULT_FALLBACK_ORDER) {
+  // Built-in order first, then extension-owned accounts in discovery order.
+  const fallbackOrder = [
+    ...SUBSCRIPTION_DEFAULT_FALLBACK_ORDER,
+    ...accounts.accounts
+      .filter((account) => account.extension !== undefined)
+      .map((account) => account.providerId),
+  ];
+  for (const providerId of fallbackOrder) {
     const account = accounts.accounts.find((entry) => entry.providerId === providerId);
     if (!isSubscriptionAccountUsable(account)) {
       continue;

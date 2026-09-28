@@ -12,7 +12,6 @@ export const V1_SUBSCRIPTION_PROVIDER_IDS = [
   'xai',
   'github-copilot',
   'devin',
-  'commandcode',
 ] as const;
 
 export type V1SubscriptionProviderId = (typeof V1_SUBSCRIPTION_PROVIDER_IDS)[number];
@@ -52,11 +51,20 @@ export type ModelSource = 'channel' | 'subscription';
 
 export type ConfiguredChatModelGroup = 'subscription' | 'channel';
 
+/**
+ * Present when an enabled managed extension (not Pi/piwin) owns this account.
+ * Shells render such cards from this metadata instead of a built-in copy table.
+ */
+export type SubscriptionAccountExtension = {
+  displayName: string;
+};
+
 export type SubscriptionAccount = {
   providerId: string;
   surface: SubscriptionSurface;
   state: SubscriptionAccountState;
   collidingChannelId?: string;
+  extension?: SubscriptionAccountExtension;
 };
 
 export type AuthPromptKind =
@@ -231,7 +239,6 @@ export const V1_SUBSCRIPTION_PROVIDER_META: Record<
   xai: { name: 'Grok', oauthOrigin: 'oauth://xai' },
   'github-copilot': { name: 'GitHub Copilot', oauthOrigin: 'oauth://github-copilot' },
   devin: { name: 'Devin', oauthOrigin: 'oauth://devin' },
-  commandcode: { name: 'Command Code', oauthOrigin: 'oauth://commandcode' },
 };
 
 export const CLAUDE_CODE_OAUTH_PROVIDER_META = {
@@ -282,7 +289,24 @@ export function isIgnoredSubscriptionProviderId(providerId: string): boolean {
   return IGNORED_SUBSCRIPTION_PROVIDER_IDS.includes(providerId);
 }
 
-export const AUTH_CLI_PROVIDER_IDS = V1_SUBSCRIPTION_PROVIDER_IDS.join('|');
+/**
+ * Provider ids an extension may claim via `piwin.json` `authProvider`.
+ * Lowercase slug so the id is safe as an auth.json key, config provider id,
+ * and `oauth://` origin. Built-in Host subscription ids stay reserved.
+ */
+const EXTENSION_AUTH_PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
+
+export function isValidExtensionAuthProviderId(providerId: string): boolean {
+  return (
+    EXTENSION_AUTH_PROVIDER_ID_PATTERN.test(providerId) &&
+    !isSubscriptionOauthProviderId(providerId)
+  );
+}
+
+export const AUTH_CLI_PROVIDER_IDS = [
+  ...V1_SUBSCRIPTION_PROVIDER_IDS,
+  '<extension-provider>',
+].join('|');
 
 /** Prefer the base id; if taken, allocate base-2, base-3, ... */
 export function allocateUniqueProviderId(

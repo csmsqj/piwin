@@ -2,17 +2,22 @@ import {
   isChannelProvider,
   isModelEnabled,
   isSubscriptionProvider,
-  isV1SubscriptionProviderId,
-  isSubscriptionOauthProviderId,
   modelSupportsCapability,
   type ModelRef,
   type SubscriptionAccount,
 } from '@piwin/contracts';
 import { findEnabledModel, findEnabledProvider } from './provider-helpers.js';
+import type { SubscriptionExtensionProvider } from './subscription-extension-providers.js';
 
 export type ResolveChatModelAccounts = {
   accounts: readonly SubscriptionAccount[];
   catalogModelIds?: ReadonlyMap<string, readonly string[]>;
+  /**
+   * Enabled extensions that own subscription providers. Sessions must load the
+   * owning extension so Pi can resolve its models; the compiler reads this
+   * snapshot instead of touching the extension store itself.
+   */
+  extensionProviders?: readonly SubscriptionExtensionProvider[];
 };
 
 export type ResolvedChatModel = {
@@ -78,9 +83,7 @@ function resolveSubscription(
   config: { providers: readonly import('@piwin/contracts').ModelProviderConfig[] },
   accounts: ResolveChatModelAccounts,
 ): ResolvedChatModel | undefined {
-  if (!isSubscriptionOauthProviderId(ref.providerId)) {
-    return undefined;
-  }
+  // Accounts cover built-in ids and enabled extension claims; no id allowlist here.
   if (config.providers.some((provider) => provider.id === ref.providerId && isChannelProvider(provider))) {
     return undefined;
   }

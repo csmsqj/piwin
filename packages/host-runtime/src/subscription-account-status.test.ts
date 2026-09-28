@@ -45,14 +45,29 @@ describe('buildSubscriptionAccounts', () => {
     expect(accounts.find((account) => account.providerId === 'devin')?.state).toBe('logged-in');
   });
 
-  it('shows Command Code only while its extension is enabled', () => {
-    const credentials = [{ providerId: 'commandcode', type: 'oauth' as const }];
+  it('shows an extension provider only while its extension is enabled', () => {
+    const credentials = [{ providerId: 'acme-cloud', type: 'oauth' as const }];
     const config = { providers: [] };
     expect(buildSubscriptionAccounts(credentials, config).some(
-      (account) => account.providerId === 'commandcode',
+      (account) => account.providerId === 'acme-cloud',
     )).toBe(false);
-    expect(buildSubscriptionAccounts(credentials, config, {}, new Set(['commandcode'])).find(
-      (account) => account.providerId === 'commandcode',
-    )?.state).toBe('logged-in');
+    expect(buildSubscriptionAccounts(credentials, config, {}, [
+      { providerId: 'acme-cloud', displayName: 'Acme Cloud' },
+    ]).find((account) => account.providerId === 'acme-cloud')).toEqual({
+      providerId: 'acme-cloud',
+      surface: 'v1',
+      state: 'logged-in',
+      extension: { displayName: 'Acme Cloud' },
+    });
+  });
+
+  it('counts an extension-stored api_key as its subscription login', () => {
+    const accounts = buildSubscriptionAccounts(
+      [{ providerId: 'acme-cloud', type: 'api_key' }],
+      { providers: [] },
+      {},
+      [{ providerId: 'acme-cloud', displayName: 'Acme Cloud' }],
+    );
+    expect(accounts.find((account) => account.providerId === 'acme-cloud')?.state).toBe('logged-in');
   });
 });

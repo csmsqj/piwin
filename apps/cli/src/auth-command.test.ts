@@ -49,17 +49,33 @@ describe('auth CLI', () => {
     warn.mockRestore();
   });
 
-  it('rejects unknown providers before talking to Host', async () => {
+  it('rejects malformed provider ids before talking to Host', async () => {
     const client = createClient({
       type: 'response',
       command: 'auth/login',
       success: true,
       data: { loginId: 'unused' },
     });
-    await expect(runAuthCommand(client, ['login', 'antigravity'])).rejects.toThrow(
-      /kimi-coding\|openai-codex\|anthropic\|xai\|github-copilot/,
+    await expect(runAuthCommand(client, ['login', 'Not/Valid'])).rejects.toThrow(
+      /kimi-coding\|openai-codex\|anthropic\|xai\|github-copilot\|devin\|<extension-provider>/,
     );
     expect(client.handleCommand).not.toHaveBeenCalled();
+  });
+
+  it('leaves extension provider slugs for the Host to validate', async () => {
+    const client = createClient({
+      type: 'response',
+      command: 'auth/logout',
+      success: false,
+      error: 'Unsupported subscription provider: acme-cloud',
+    });
+    await expect(runAuthCommand(client, ['logout', 'acme-cloud'])).rejects.toThrow(
+      /Unsupported subscription provider/,
+    );
+    expect(client.handleCommand).toHaveBeenCalledWith({
+      type: 'auth/logout',
+      input: { providerId: 'acme-cloud' },
+    });
   });
 
   it('sends logout for an allowlisted id', async () => {

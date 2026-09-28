@@ -13,6 +13,7 @@ import {
   describeSubscriptionLoginFailure,
   getSubscriptionBillingNotice,
   isV1SubscriptionProviderId,
+  isValidExtensionAuthProviderId,
 } from '@piwin/contracts';
 import { formatError } from '@piwin/contracts';
 import { createWalkthroughHostClient } from './cli-host-clients.js';
@@ -67,7 +68,7 @@ export async function runAuthCommand(client: AuthHostClient, argv: string[]): Pr
   }
   if (action === 'logout') {
     const providerId = argv[1] ?? '';
-    if (!isV1SubscriptionProviderId(providerId)) {
+    if (!isCliAuthProviderId(providerId)) {
       throw new Error(`Usage: piwin auth logout <${AUTH_CLI_PROVIDER_IDS}>`);
     }
     const response = await client.handleCommand({ type: 'auth/logout', input: { providerId } });
@@ -86,7 +87,7 @@ export async function runAuthCommand(client: AuthHostClient, argv: string[]): Pr
   }
   if (action === 'login') {
     const providerId = argv[1] ?? '';
-    if (!isV1SubscriptionProviderId(providerId)) {
+    if (!isCliAuthProviderId(providerId)) {
       throw new Error(`Usage: piwin auth login <${AUTH_CLI_PROVIDER_IDS}>`);
     }
     printSubscriptionBillingNotice(providerId);
@@ -96,6 +97,10 @@ export async function runAuthCommand(client: AuthHostClient, argv: string[]): Pr
   throw new Error('Usage: piwin auth status | login <id> | logout <id> | claim <loginId>');
 }
 
+/** Built-in ids, or an extension slug the Host validates against enabled claims. */
+function isCliAuthProviderId(providerId: string): boolean {
+  return isV1SubscriptionProviderId(providerId) || isValidExtensionAuthProviderId(providerId);
+}
 async function loginInteractive(client: AuthHostClient, providerId: string): Promise<void> {
   const rl = createInterface({ input, output });
   const finished = new Promise<void>((resolve, reject) => {

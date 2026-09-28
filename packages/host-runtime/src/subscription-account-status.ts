@@ -4,7 +4,6 @@ import {
   IGNORED_SUBSCRIPTION_PROVIDER_IDS,
   V1_SUBSCRIPTION_PROVIDER_IDS,
   isChannelProvider,
-  isSubscriptionOauthProviderId,
 } from '@piwin/contracts';
 import type { SubscriptionCredentialInfo } from '@piwin/agent-host';
 import { isSubscriptionAccountUsable } from './resolve-chat-model.js';
@@ -28,19 +27,27 @@ export function findCollidingChannelId(
   )?.id;
 }
 
+/** An enabled extension's claimed provider, with its resolved card name. */
+export type ExtensionAccountSource = {
+  providerId: string;
+  displayName: string;
+};
+
 export function buildSubscriptionAccounts(
   credentials: readonly SubscriptionCredentialInfo[],
   config: Pick<PiwinConfig, 'providers'>,
   hints: AccountRuntimeHint = {},
-  extensionProviderIds: ReadonlySet<string> = new Set(),
+  extensionProviders: readonly ExtensionAccountSource[] = [],
 ): SubscriptionAccount[] {
+  const extensionIds = new Set(extensionProviders.map((provider) => provider.providerId));
   const loggedInIds = new Set(
-    credentials.filter(isLiveSubscriptionCredential).map((entry) => entry.providerId),
+    credentials
+      .filter((entry) => isLiveSubscriptionCredential(entry, extensionIds))
+      .map((entry) => entry.providerId),
   );
   const accounts: SubscriptionAccount[] = [];
 
   for (const providerId of V1_SUBSCRIPTION_PROVIDER_IDS) {
-    if (providerId === 'commandcode' && !extensionProviderIds.has(providerId)) continue;
     accounts.push(
       buildAccount(providerId, 'v1', loggedInIds.has(providerId), config, hints),
     );
@@ -55,6 +62,13 @@ export function buildSubscriptionAccounts(
       hints,
     ),
   );
+  // Cards exist only while the owning extension is enabled.
+  for (const provider of extensionProviders) {
+    accounts.push({
+      ...buildAccount(provider.providerId, 'v1', loggedInIds.has(provider.providerId), config, hints),
+      extension: { displayName: provider.displayName },
+    });
+  }
   for (const providerId of IGNORED_SUBSCRIPTION_PROVIDER_IDS) {
     if (!loggedInIds.has(providerId)) {
       continue;
@@ -66,16 +80,22 @@ export function buildSubscriptionAccounts(
 
 /**
  * Claude Code stores an isolated `api_key` so Pi checkAuth passes. That is still
- * the plan-quota OAuth login — do not treat it like a BYOK key.
+ * the plan-quota OAuth login — do not treat it like a BYOK key. Extension-owned
+ * providers decide their own credential shape (some persist an `api_key` from
+ * their OAuth flow), so any stored credential under a claimed id is live.
  */
-export function isLiveSubscriptionCredential(entry: {
-  providerId: string;
-  type: string;
-}): boolean {
+export function isLiveSubscriptionCredential(
+  entry: { providerId: string; type: string },
+  extensionProviderIds: ReadonlySet<string> = new Set(),
+): boolean {
   if (entry.type === 'oauth') {
     return true;
   }
-  return entry.providerId === CLAUDE_CODE_OAUTH_PROVIDER_ID && entry.type === 'api_key';
+  return (
+    entry.type === 'api_key' &&
+    (entry.providerId === CLAUDE_CODE_OAUTH_PROVIDER_ID ||
+      extensionProviderIds.has(entry.providerId))
+  );
 }
 
 export function collidingV1ChannelIds(
@@ -85,7 +105,7 @@ export function collidingV1ChannelIds(
 ): ReadonlySet<string> {
   const blocked = new Set<string>();
   for (const account of accounts) {
-    if (!isSubscriptionOauthProviderId(account.providerId)) {
+    if (account.surface !== 'v1') {
       continue;
     }
     if (!liveAccountStates.has(account.state)) {

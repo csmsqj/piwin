@@ -80,6 +80,8 @@ export type SubscriptionAuthPort = {
     signal?: AbortSignal;
   }) => Promise<void>;
   fetchQuota: (providerId: string) => Promise<SubscriptionAccountQuota>;
+  /** Display name an extension gave its provider in `registerProvider`. */
+  getProviderName?: (providerId: string) => string | undefined;
   resetQuota: (
     providerId: string,
   ) => Promise<{ ok: boolean; message?: string; quota?: SubscriptionAccountQuota }>;
@@ -152,11 +154,20 @@ type PiModelRuntimeLike = {
   registerProvider?(id: string, config: object): void;
 };
 
+export type SubscriptionExtensionEntry = {
+  providerId: string;
+  entryPath: string;
+};
+
 export type CreateSubscriptionAuthPortOptions = {
   authPath: string;
   modelsPath?: string;
-  /** Enabled, immutable provider extension entries selected by Host Runtime. */
-  extensionPaths?: readonly string[];
+  /**
+   * Enabled, immutable provider extension entries selected by Host Runtime,
+   * each with the one provider id it claimed. Only that id is registered
+   * from the extension, so an extension cannot shadow other providers.
+   */
+  extensionProviders?: readonly SubscriptionExtensionEntry[];
   createRuntime?: (options: {
     authPath: string;
     modelsPath?: string;
@@ -176,12 +187,20 @@ export function shouldRegisterCompiledProvider(auth: { kind: string }): boolean 
 export async function createSubscriptionAuthPort(
   options: CreateSubscriptionAuthPortOptions,
 ): Promise<SubscriptionAuthPort> {
+  const extensionProviders = options.extensionProviders ?? [];
+  const extensionProviderIds = new Set(extensionProviders.map((entry) => entry.providerId));
+  const extensionProviderNames = new Map<string, string>();
   const runtime = options.createRuntime
     ? await options.createRuntime({
         authPath: options.authPath,
         ...(options.modelsPath !== undefined ? { modelsPath: options.modelsPath } : {}),
       })
-    : await createDefaultRuntime(options.authPath, options.modelsPath, options.extensionPaths);
+    : await createDefaultRuntime(
+        options.authPath,
+        options.modelsPath,
+        extensionProviders,
+        extensionProviderNames,
+      );
   const entitlements = new Map<string, ReadonlySet<string>>();
 
   return {
@@ -221,8 +240,11 @@ export async function createSubscriptionAuthPort(
       const allowed = entitlements.get(providerId) ?? entitlements.get(catalogId);
       return allowed ? models.filter((model) => allowed.has(model.id)) : models;
     },
+    getProviderName(providerId) {
+      return extensionProviderNames.get(providerId);
+    },
     async login(providerId, interaction) {
-      if (!isV1SubscriptionProviderId(providerId)) {
+      if (!isV1SubscriptionProviderId(providerId) && !extensionProviderIds.has(providerId)) {
         return {
           kind: 'failed',
           message: `Unsupported subscription provider: ${providerId}`,
@@ -320,8 +342,10 @@ export function defaultPiAuthPaths(agentDir: string): { authPath: string; models
 
 async function createDefaultRuntime(
   authPath: string,
-  modelsPath?: string,
-  extensionPaths: readonly string[] = [],
+  modelsPath: string | undefined,
+  extensionProviders: readonly SubscriptionExtensionEntry[],
+  /** Filled with each claimed provider's `registerProvider` display name. */
+  providerNames: Map<string, string>,
 ): Promise<PiModelRuntimeLike> {
   const piModule = (await import('@earendil-works/pi-coding-agent')) as unknown as {
     ModelRuntime?: {
@@ -352,7 +376,7 @@ async function createDefaultRuntime(
     // Pass the runtime itself: Pi's `registerProvider` reads `this.builtins`,
     // so a detached method reference throws "reading 'get'" of undefined.
     registerDevinOauthProvider(runtime as { registerProvider(id: string, config: object): void });
-    if (extensionPaths.length > 0) {
+    if (extensionProviders.length > 0) {
       if (!piModule.DefaultResourceLoader) {
         throw new Error('Pi extension resource loader is unavailable for subscription auth');
       }
@@ -360,7 +384,7 @@ async function createDefaultRuntime(
       const loader = new piModule.DefaultResourceLoader({
         cwd: agentDir,
         agentDir,
-        additionalExtensionPaths: [...extensionPaths],
+        additionalExtensionPaths: extensionProviders.map((entry) => entry.entryPath),
         noExtensions: true,
         noSkills: true,
         noPromptTemplates: true,
@@ -372,9 +396,16 @@ async function createDefaultRuntime(
       if (loaded.errors.length > 0) {
         throw new Error(`Provider extension failed to load: ${loaded.errors[0]?.error ?? 'unknown error'}`);
       }
+      // Register only ids claimed in piwin.json; side registrations from the
+      // same extension never reach the Host auth runtime. Host Runtime already
+      // rejects two enabled extensions claiming one id.
+      const claimedIds = new Set(extensionProviders.map((entry) => entry.providerId));
       for (const registration of loaded.runtime.pendingProviderRegistrations) {
-        if (registration.name === 'commandcode') {
-          runtime.registerProvider('commandcode', registration.config);
+        if (!claimedIds.has(registration.name)) continue;
+        runtime.registerProvider(registration.name, registration.config);
+        const name = (registration.config as { name?: unknown }).name;
+        if (typeof name === 'string' && name.trim()) {
+          providerNames.set(registration.name, name.trim());
         }
       }
     }

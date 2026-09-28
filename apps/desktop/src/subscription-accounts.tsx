@@ -45,10 +45,25 @@ const OAUTH_DISPLAY_PROVIDER_IDS: readonly SubscriptionOauthProviderId[] = [
   'xai',
   'github-copilot',
   'devin',
-  'commandcode',
 ];
 
 type OauthCardId = (typeof OAUTH_DISPLAY_PROVIDER_IDS)[number];
+
+/** Built-in cards use CARD_COPY; extension-owned accounts carry their own name. */
+function extensionCardCopy(displayName: string): ProviderCardMeta {
+  return {
+    title: displayName,
+    titleEn: displayName,
+    tagline: '社区扩展 · 由已启用的扩展提供授权',
+    taglineEn: 'Community extension · auth provided by an enabled extension',
+    login: '授权登录',
+    loginEn: 'Connect',
+  };
+}
+
+function isBuiltinCardId(providerId: string): providerId is OauthCardId {
+  return (OAUTH_DISPLAY_PROVIDER_IDS as readonly string[]).includes(providerId);
+}
 
 const CARD_COPY: Record<OauthCardId, ProviderCardMeta> = {
   'kimi-coding': {
@@ -105,14 +120,6 @@ const CARD_COPY: Record<OauthCardId, ProviderCardMeta> = {
     tagline: '登录后可免费使用 web_search 和 code_search · 非官方接口，账号风险自负',
     taglineEn: 'Sign in to use web_search and code_search for free · unofficial API, you own the risk',
     login: '授权登录',
-    loginEn: 'Connect',
-  },
-  commandcode: {
-    title: 'Command Code',
-    titleEn: 'Command Code',
-    tagline: '社区扩展 · 需自有 Command Code 账号',
-    taglineEn: 'Community extension · Command Code account required',
-    login: '连接授权',
     loginEn: 'Connect',
   },
 };
@@ -356,7 +363,7 @@ export function SubscriptionAccountsPanel(): ReactElement {
     [hostClient, setError],
   );
 
-  async function startLogin(providerId: OauthCardId, collidingChannelId?: string): Promise<void> {
+  async function startLogin(providerId: string, collidingChannelId?: string): Promise<void> {
     setError?.(null);
     if (collidingChannelId) {
       const ok = await confirmDialog.confirm({
@@ -417,7 +424,7 @@ export function SubscriptionAccountsPanel(): ReactElement {
     }
   }
 
-  async function startLogout(providerId: OauthCardId): Promise<void> {
+  async function startLogout(providerId: string): Promise<void> {
     const ok = await confirmDialog.confirm({
       title: isChinese ? '退出登录' : 'Sign out',
       description: isChinese
@@ -478,8 +485,13 @@ export function SubscriptionAccountsPanel(): ReactElement {
     }
   }, [prompt?.promptId]);
 
-  const displayProviderIds = OAUTH_DISPLAY_PROVIDER_IDS.filter((id) =>
-    id !== 'commandcode' || accounts.some((account) => account.providerId === id));
+  // Extension cards exist only while the Host lists them (extension enabled).
+  const displayProviderIds: string[] = [
+    ...OAUTH_DISPLAY_PROVIDER_IDS,
+    ...accounts
+      .filter((account) => account.extension !== undefined && !isBuiltinCardId(account.providerId))
+      .map((account) => account.providerId),
+  ];
   const connectedCount = displayProviderIds.filter((id) => {
     const acc = accounts.find((item) => item.providerId === id);
     return acc?.state === 'logged-in';
@@ -534,7 +546,11 @@ export function SubscriptionAccountsPanel(): ReactElement {
       <div className="oauth-account-list oauth-account-grid">
         {displayProviderIds.map((providerId) => {
           const account = accounts.find((item) => item.providerId === providerId);
-          const copy = CARD_COPY[providerId];
+          const copy = isBuiltinCardId(providerId)
+            ? CARD_COPY[providerId]
+            : extensionCardCopy(account?.extension?.displayName ?? providerId);
+          // Quota readers exist only for built-in providers.
+          const hasQuota = isBuiltinCardId(providerId);
           const isExtensionClaude = providerId === CLAUDE_CODE_OAUTH_PROVIDER_ID;
           const isLoggingIn = activeLogin?.providerId === providerId;
           const state: SubscriptionAccount['state'] = isLoggingIn
@@ -627,7 +643,7 @@ export function SubscriptionAccountsPanel(): ReactElement {
                           )}
 
                           {/* Quota Drawer Toggle Button */}
-                          {providerId !== 'commandcode' ? (
+                          {hasQuota ? (
                             <Button
                               variant="secondary"
                               size="compact"
