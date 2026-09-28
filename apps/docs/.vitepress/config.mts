@@ -38,7 +38,7 @@ export default defineConfig({
       { text: '首页', link: '/' },
       { text: '下载', link: '/download' },
       { text: '快速起步', link: '/docs/getting-started' },
-      { text: '智能能力', link: '/docs/code-search' },
+      { text: '拓展站', link: 'https://extension.piwinwin.com', target: '_blank' },
       { text: '配置指南', link: '/docs/model-config' },
       { text: '系统生态', link: '/docs/extensions' },
       { text: '视觉画廊', link: '/docs/gallery' },
