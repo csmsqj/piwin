@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { ProviderIcon, resolveModelBrandKey } from './provider-icon';
+import { ProviderIcon } from './provider-icon';
+import { resolveModelBrandKey } from './provider-brands';
 
 describe('ProviderIcon', () => {
   it('renders a real brand mark for known preset ids', () => {
@@ -202,6 +203,39 @@ describe('ProviderIcon', () => {
     expect(resolveModelBrandKey('lm-studio-local')).toBe('lmstudio');
     expect(resolveModelBrandKey('google/gemini-3.8-pro')).toBe('gemini');
     expect(resolveModelBrandKey('deepseek/deepseek-v4-flash-0731:free')).toBe('deepseek');
+  });
+
+  it('resolves MiniMax from model ids and provider ids', () => {
+    expect(resolveModelBrandKey('minimax-m2-5')).toBe('minimax');
+    expect(resolveModelBrandKey('MiniMax-M2.1')).toBe('minimax');
+    const html = renderToStaticMarkup(
+      createElement(ProviderIcon, { id: 'kiro', modelId: 'minimax-m2-1' }),
+    );
+    expect(html).toContain('data-provider-brand="Minimax"');
+    const provider = renderToStaticMarkup(createElement(ProviderIcon, { id: 'minimax' }));
+    expect(provider).toContain('data-provider-brand="Minimax"');
+  });
+
+  it('draws the neutral model mark instead of a monogram when fallback="model"', () => {
+    const avatar = renderToStaticMarkup(
+      createElement(ProviderIcon, { id: 'kiro', modelId: 'house-model-1', fallback: 'model' }),
+    );
+    expect(avatar).toContain('data-provider-icon="kiro"');
+    expect(avatar).toContain('data-provider-brand="model"');
+    expect(avatar).toContain('<svg');
+    expect(avatar).not.toContain('>K<');
+
+    const glyph = renderToStaticMarkup(
+      createElement(ProviderIcon, { id: 'kiro', fallback: 'model', variant: 'glyph' }),
+    );
+    expect(glyph).toContain('data-provider-brand="model"');
+    expect(glyph).toContain('is-glyph');
+
+    // A branded model/provider is unaffected by the fallback choice.
+    const branded = renderToStaticMarkup(
+      createElement(ProviderIcon, { id: 'kiro', modelId: 'glm-5', fallback: 'model' }),
+    );
+    expect(branded).toContain('data-provider-brand="Zhipu"');
   });
 
   it('keeps a provider id containing "ark" inside a word off Volcengine', () => {

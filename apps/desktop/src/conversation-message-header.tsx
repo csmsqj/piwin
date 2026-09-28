@@ -107,6 +107,7 @@ export function ConversationMessageHeader(props: ConversationMessageHeaderProps)
               modelId={model.modelId}
               {...(providerName !== undefined ? { name: providerName } : {})}
               size={32}
+              fallback="model"
               className="conversation-message-provider-icon"
             />
             <span

@@ -326,6 +326,7 @@ export function ChatTurnMarginalia(props: { data: TurnMarginaliaData }): ReactEl
       name={data.who}
       size={14}
       variant="glyph"
+      fallback="model"
       className="turn-model-icon"
     />
   ) : (
@@ -377,6 +378,7 @@ export function ChatTurnHead(props: { data: TurnMarginaliaData }): ReactElement 
       name={data.who}
       size={14}
       variant="glyph"
+      fallback="model"
       className="turn-model-icon"
     />
   ) : (

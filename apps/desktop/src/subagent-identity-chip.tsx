@@ -74,6 +74,7 @@ function SubagentModelChip(props: SubagentIdentityChipsProps): ReactElement {
         name={display.providerName}
         modelId={props.model.modelId}
         size={14}
+        fallback="model"
         className="subagent-model-chip-icon"
       />
       <span className="subagent-model-chip-label">{display.shortModelName}</span>

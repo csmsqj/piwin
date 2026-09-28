@@ -69,6 +69,7 @@ export function TurnBlock({
             name={modelLabel}
             size={22}
             radius="50%"
+            fallback="model"
             className="avatar-brand"
           />
         ) : (
