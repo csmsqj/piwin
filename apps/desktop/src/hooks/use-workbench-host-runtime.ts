@@ -249,6 +249,12 @@ export function useWorkbenchHostRuntime(args: UseWorkbenchHostRuntimeArgs) {
     hostReady: state.hostReady,
     catchUpEpoch: remoteCatchUpEpoch,
     foregroundAdmission: state.foregroundAdmission,
+    compactionSettledKey:
+      state.compactionActivity?.phase === 'succeeded' &&
+      state.compactionActivity.willRetry !== true &&
+      state.compactionActivity.runId === state.activeRunId
+        ? state.compactionActivity.operationId
+        : null,
   });
   usePendingPermissionReconcile({
     hostClient,

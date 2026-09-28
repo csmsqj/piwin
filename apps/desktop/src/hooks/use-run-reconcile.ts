@@ -37,6 +37,8 @@ export type UseRunReconcileArgs = {
    * without changing `activeSessionId`. Re-admit in that case or Send stays off.
    */
   foregroundAdmission?: 'unknown' | 'reconciling' | 'ready';
+  /** Successful no-retry compaction reached the end of this active Run's model work. */
+  compactionSettledKey?: string | null;
 };
 
 /**
@@ -335,6 +337,39 @@ export function useRunReconcile(args: UseRunReconcileArgs): void {
       }
     };
   }, [args.activeRunId, args.runLive, schedule]);
+
+  useEffect(() => {
+    // Auto-compaction can finish long after the post-admission convergence
+    // window expired. Recheck Host authority at that lifecycle boundary rather
+    // than inferring a terminal from the compaction event itself.
+    if (
+      !args.runLive ||
+      args.activeRunId === null ||
+      args.compactionSettledKey === null ||
+      args.compactionSettledKey === undefined
+    ) {
+      return;
+    }
+    let cancelled = false;
+    const timers = POST_ADMISSION_RECONCILE_DELAYS_MS.map((delay) =>
+      globalThis.setTimeout(() => {
+        if (!cancelled) {
+          schedule('live');
+        }
+      }, delay),
+    );
+    return () => {
+      cancelled = true;
+      for (const timer of timers) {
+        globalThis.clearTimeout(timer);
+      }
+    };
+  }, [
+    args.activeRunId,
+    args.compactionSettledKey,
+    args.runLive,
+    schedule,
+  ]);
 
   useEffect(() => {
     admitBackoffAttemptRef.current = 0;

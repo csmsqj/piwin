@@ -15,6 +15,7 @@ import type {
 } from '@piwin/contracts';
 
 import { createJobRegistry, type JobRegistryEvent, type JobPolicy } from './job-registry.js';
+import { MAX_JOB_LOG_PUSH_BYTES, measureEncodedTextBytes } from './job-log-emitter.js';
 import type { JobLogStore } from './job-log-store.js';
 import type { JobRecordStore } from './job-record-store.js';
 import type {
@@ -1661,6 +1662,34 @@ describe('JobRegistry', () => {
         .map((event) => (event.type === 'job/log' ? event.chunk.text : ''))
         .join('');
       expect(allText).toContain('error output');
+    });
+
+    it('bounds every job/log push when output floods one throttle window', async () => {
+      // Regression: `grep -rn … ~/.piwin/sessions/` produced a >1 MB job/log
+      // push inside one 100ms window; Host egress rejected it as oversized and
+      // permanently closed the local Desktop channel.
+      const { registry, supervisor, events, trustedDir } = await createFixture({
+        logThrottleMs: 10_000,
+      });
+      await registry.start({
+        kind: 'command',
+        lifetime: 'host',
+        command: 'node',
+        argv: [],
+        cwd: trustedDir,
+      });
+      events.length = 0;
+      const pieceText = `${'模型名'.repeat(10_000)}\n`;
+      for (let index = 0; index < 60; index += 1) {
+        supervisor.children[0]!.emitStdout(pieceText);
+      }
+      const logChunks = events.flatMap((event) => (event.type === 'job/log' ? [event.chunk] : []));
+      expect(logChunks.length).toBeGreaterThan(1);
+      for (const chunk of logChunks) {
+        expect(measureEncodedTextBytes(chunk.text)).toBeLessThanOrEqual(MAX_JOB_LOG_PUSH_BYTES);
+      }
+      const cursors = logChunks.map((chunk) => chunk.cursor);
+      expect(new Set(cursors).size).toBe(cursors.length);
     });
   });
 });

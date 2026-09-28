@@ -8,7 +8,11 @@ import type {
 } from '@piwin/contracts';
 import { classifyHostPush, type HostDeliveryKey, type HostPushPolicy } from '@piwin/host-transport';
 import type { LiveSessionFilter } from '@piwin/host-transport';
-import { HostEgressChannel, type HostEgressRecord } from './host-egress-channel.js';
+import {
+  HostEgressChannel,
+  type HostEgressCloseDetail,
+  type HostEgressRecord,
+} from './host-egress-channel.js';
 import type { HostEgressClientStats, HostEgressStats } from './host-egress-metrics.js';
 import { HostReplayJournal } from './host-replay-journal.js';
 
@@ -36,7 +40,7 @@ export type HostEgressClientOptions = {
   maxQueueItems?: number;
   maxQueueBytes?: number;
   send?: (message: HostPushFrame | HostPushBatchFrame) => void;
-  onSlowConsumer?: (reason: string) => void;
+  onSlowConsumer?: (reason: string, detail?: HostEgressCloseDetail) => void;
   sendNow?: (frame: HostPushFrame) => void;
   sendBatchNow?: (frame: HostPushBatchFrame) => void;
   supportsBatch?: boolean;
@@ -223,9 +227,13 @@ export class HostEgressHub {
           }
         }
       },
-      onSlowConsumer: (reason) => {
+      onSlowConsumer: (reason, detail) => {
         try {
-          (options.onSlowConsumer ?? closeSlowConsumer)(reason);
+          if (options.onSlowConsumer !== undefined) {
+            options.onSlowConsumer(reason, detail);
+          } else {
+            closeSlowConsumer(reason);
+          }
         } finally {
           this.retiredClientStats.set(options.id, channel.getStats());
           this.clients.delete(options.id);

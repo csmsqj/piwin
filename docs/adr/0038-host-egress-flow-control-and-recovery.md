@@ -212,8 +212,9 @@ queue, or JavaScript callback queue as hidden buffering.
   against Host authority. Gap detection and window refocus on a thread that
   still shows a live run are the normal triggers; a newly admitted Run also
   gets a bounded 250ms/1s/3s/5s convergence window for a terminal push that
-  was lost after admission. This is bounded recovery, not an unbounded polling
-  loop.
+  was lost after admission. A successful no-retry automatic compaction re-arms
+  that same bounded window because long runs can finish after the admission
+  window has expired. This is bounded recovery, not an unbounded polling loop.
 - Reconciliation queries `session/foreground-run` (the Run registry is the
   authority). A terminal record replays the terminal projection; no record at
   all clears stale streaming state; an active run means do nothing. The
@@ -326,6 +327,36 @@ These are downstream containment layers, not substitutes for Host egress or
 durable history. Automated bounds are implemented. Gate A remains open until a
 clean native 30-minute run records the WebContent slope, delivery counts,
 queue/cursor statistics, and Stop latency.
+
+## Stdio local channel re-attach addendum (2026-09-28)
+
+Incident: an Agent `grep -rn … ~/.piwin/sessions/` Job produced a single
+`job/log` push above the 1 MiB frame budget inside one 100ms log throttle
+window. The channel correctly rejected the oversized append and closed, but the
+stdio sidecar has no reconnect: Desktop kept a working command pipe and
+received no pushes for the rest of the Host lifetime. Runs continued on the
+Host while the UI showed only the composer spinner.
+
+Decisions:
+
+- **Producers bound their own append items.** Every append producer must keep
+  one push well under the frame budget. `@piwin/process` `JobLogEmitter` splits
+  a throttle window into pushes of at most 128 KiB JSON-encoded text, each
+  carrying the log-store cursor of its last stored chunk (strictly increasing).
+  A single stored chunk that alone exceeds the budget is shortened head+tail in
+  the live push only; `job/logs` remains the lossless reader.
+- **A closed local stdio channel re-attaches.** Section 6 step 6 ("on
+  reconnect, replay or hydrate") is realized for stdio by
+  `attachSidecarLocalEgress` in `apps/cli`: after the Hub retires the closed
+  channel, a new one attaches at the Hub's current sequence and a `host/status`
+  control push is ingested. Its batch carries `afterSeq` beyond Desktop's
+  applied cursor, so the existing gap handler reconciles from Host authority
+  (transcript tail with preserved live tail, foreground Run, pending
+  permissions). No Desktop change and no new protocol shape is required.
+- **Close reasons name the push.** Channel closes carry a
+  `HostEgressCloseDetail` (seq, push type, policy, delivery key, encoded bytes,
+  frame budget); the sidecar logs it so the unbounded producer is identifiable
+  from `host.log` alone.
 
 ## Consequences
 

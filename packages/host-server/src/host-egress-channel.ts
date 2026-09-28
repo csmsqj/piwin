@@ -14,6 +14,25 @@ export type HostEgressRecord = {
   encodedBytes: number;
 };
 
+/** Which push closed a channel, so an operator can find the unbounded producer. */
+export type HostEgressCloseDetail = {
+  seq: number;
+  pushType: string;
+  policyKind: HostPushPolicy['kind'];
+  deliveryKey?: readonly string[];
+  encodedBytes: number;
+  maxFrameBytes: number;
+};
+
+/** Stable one-line rendering of a close detail for Host logs. */
+export function formatHostEgressCloseDetail(detail: HostEgressCloseDetail): string {
+  const key = detail.deliveryKey === undefined ? '' : ` key=${detail.deliveryKey.join('/')}`;
+  return (
+    `seq=${detail.seq} push=${detail.pushType} policy=${detail.policyKind}${key} ` +
+    `bytes=${detail.encodedBytes} maxFrameBytes=${detail.maxFrameBytes}`
+  );
+}
+
 export type HostEgressChannelOptions = {
   id: string;
   hostInstanceId: string;
@@ -26,7 +45,7 @@ export type HostEgressChannelOptions = {
   maxFrameBytes?: number;
   send: (message: HostWireMessage) => void;
   canSend?: () => boolean;
-  onSlowConsumer?: (reason: string) => void;
+  onSlowConsumer?: (reason: string, detail?: HostEgressCloseDetail) => void;
   liveFilter?: LiveSessionFilter;
   deliverOwnerActions?: boolean;
   /** Stable identity of this connection for Live owner-action delivery. */
@@ -57,7 +76,7 @@ export class HostEgressChannel {
   private readonly maxFrameBytes: number;
   private readonly send: (message: HostWireMessage) => void;
   private readonly canSend: () => boolean;
-  private readonly onSlowConsumer: (reason: string) => void;
+  private readonly onSlowConsumer: (reason: string, detail?: HostEgressCloseDetail) => void;
   private readonly schedule: (
     callback: () => void,
     delayMs: number,
@@ -208,7 +227,14 @@ export class HostEgressChannel {
     if (record.encodedBytes > this.maxFrameBytes) {
       this.oversizedItems += 1;
       if (record.policy.kind === 'append' || record.policy.kind === 'control') {
-        this.closeInternal('oversized-item');
+        this.closeInternal('oversized-item', {
+          seq: record.sequence.seq,
+          pushType: record.sequence.push.type,
+          policyKind: record.policy.kind,
+          ...('key' in record.policy ? { deliveryKey: record.policy.key } : {}),
+          encodedBytes: record.encodedBytes,
+          maxFrameBytes: this.maxFrameBytes,
+        });
       }
       return;
     }
@@ -447,7 +473,7 @@ export class HostEgressChannel {
     this.closeInternal(reason);
   }
 
-  private closeInternal(reason: string): void {
+  private closeInternal(reason: string, detail?: HostEgressCloseDetail): void {
     if (this.closed) return;
     this.closed = true;
     if (this.flushTimer !== undefined) {
@@ -461,7 +487,11 @@ export class HostEgressChannel {
     this.dataQueue = [];
     this.controlQueue = [];
     this.queuedBytes = 0;
-    this.onSlowConsumer(reason);
+    if (detail === undefined) {
+      this.onSlowConsumer(reason);
+    } else {
+      this.onSlowConsumer(reason, detail);
+    }
   }
 
   private updateHighWater(): void {

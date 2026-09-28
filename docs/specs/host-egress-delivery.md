@@ -439,7 +439,17 @@ the hard frame cap:
 - a replaceable/diagnostic item may be rejected according to its documented
   producer cap;
 - an append/control connection is failed and recovers from Host state;
-- secrets/payload bodies are never included in the error log.
+- secrets/payload bodies are never included in the error log; the close
+  detail carries only seq, push type, policy, delivery key, and byte sizes.
+
+A WebSocket client recovers by reconnecting with its cursor. The stdio sidecar
+has no reconnect, so `host serve` re-attaches the local channel at the Hub's
+current sequence and ingests `host/status`; the resulting `afterSeq` gap
+triggers Desktop's gap reconcile (ADR 0038, stdio re-attach addendum).
+
+Known producer caps: `job/log` pushes are at most 128 KiB of JSON-encoded text
+(`MAX_JOB_LOG_PUSH_BYTES`, `@piwin/process`); tool output in Agent events is
+bounded by `boundToolOutput` in `@piwin/agent-host`.
 
 ## 12. Replay journal
 

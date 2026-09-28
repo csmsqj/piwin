@@ -103,6 +103,7 @@ type ProbeProps = {
   hostReady?: boolean;
   catchUpEpoch?: number;
   foregroundAdmission?: 'unknown' | 'reconciling' | 'ready';
+  compactionSettledKey?: string | null;
 };
 
 function mountProbe(
@@ -129,6 +130,9 @@ function mountProbe(
       ...(probeProps.foregroundAdmission === undefined
         ? {}
         : { foregroundAdmission: probeProps.foregroundAdmission }),
+      ...(probeProps.compactionSettledKey === undefined
+        ? {}
+        : { compactionSettledKey: probeProps.compactionSettledKey }),
     });
     return null;
   }
@@ -365,6 +369,51 @@ describe('useRunReconcile', () => {
         'session/queued-turn-list',
       ]);
       expect(actions.map((action) => action.type)).toContain('run/stale-clear');
+      root.unmount();
+      container.remove();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('rechecks Host authority when a long run settles compaction after admission checks expire', async () => {
+    vi.useFakeTimers();
+    try {
+      const fake = new FakeHostClient();
+      const { endedAt: _endedAt, ...runningBase } = terminalRun();
+      fake.scriptForegroundRun({ kind: 'run', run: { ...runningBase, status: 'running' } });
+      const actions: ChatUiAction[] = [];
+      const props: ProbeProps = {
+        activeSessionId: 'session-1',
+        activeRunId: 'run-1',
+        runLive: true,
+        compactionSettledKey: null,
+      };
+      const { root, container, rerender } = mountProbe(
+        fake as unknown as HostClient,
+        (action) => {
+          actions.push(action);
+        },
+        props,
+      );
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+      fake.requests.length = 0;
+      fake.scriptForegroundRun({ kind: 'run', run: null });
+
+      rerender({ ...props, compactionSettledKey: 'compact-1' });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(250);
+      });
+
+      expect(fake.requests.map((command) => command.type)).toEqual([
+        'session/foreground-run',
+        'session/messages',
+        'session/queued-turn-list',
+      ]);
+      expect(actions).toContainEqual({ type: 'run/stale-clear', sessionId: 'session-1' });
       root.unmount();
       container.remove();
     } finally {

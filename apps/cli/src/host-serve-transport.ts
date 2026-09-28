@@ -22,7 +22,9 @@ export const HOST_SERVE_OUTPUT_BACKLOG_BYTES = 2 * 1024 * 1024;
 
 /**
  * The local Desktop is the only client and must never be dropped as a slow
- * consumer; backpressure plus coalescing bound the queue instead.
+ * consumer; backpressure plus coalescing bound the queue instead. A channel
+ * can still close on an oversized item; `attachSidecarLocalEgress` then
+ * re-attaches it so Desktop recovers through its gap reconcile.
  */
 export const HOST_SERVE_LOCAL_EGRESS_LIMITS = {
   maxQueueBytes: 256 * 1024 * 1024,

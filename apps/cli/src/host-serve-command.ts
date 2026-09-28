@@ -7,6 +7,7 @@ import {
 } from './host-serve-transport.js';
 import { createSidecarMobileAccess, interceptSidecarMobileAccess } from './mobile-access-serve.js';
 import { LOCAL_JSONL_CLIENT_ID, createSidecarHostAuthority } from './sidecar-host-authority.js';
+import { attachSidecarLocalEgress } from './sidecar-local-egress.js';
 import { HostRuntime, applyPiwinPlaywrightBrowsersPath } from '@piwin/host-runtime';
 import { admitAndExecuteHostCommand, createDeviceToolBrokerForHost } from '@piwin/host-server';
 import { resolve } from 'node:path';
@@ -56,10 +57,17 @@ export async function commandHostServe(argv: string[]): Promise<void> {
   const authority = createSidecarHostAuthority(runtime);
   authority.start();
   const egressHub = authority.egressHub;
-  const egressChannel = egressHub.addClient({
-    id: LOCAL_JSONL_CLIENT_ID,
-    initialSeq: 0,
-    supportsBatch: true,
+  const ingestHostStatus = (): void => {
+    egressHub.ingest({
+      type: 'host/status',
+      mode: runtime.getMode(),
+      ready: true,
+      mock,
+    });
+  };
+  const localEgress = attachSidecarLocalEgress({
+    egressHub,
+    clientId: LOCAL_JSONL_CLIENT_ID,
     canSend: () => transport.canAcceptPush(),
     ...HOST_SERVE_LOCAL_EGRESS_LIMITS,
     send: (message) => {
@@ -70,17 +78,13 @@ export async function commandHostServe(argv: string[]): Promise<void> {
         );
       });
     },
-    onSlowConsumer: (reason) => {
-      console.error(`[piwin host serve] local egress closed: ${reason}`);
-    },
+    log: (line) => console.error(line),
+    // A fresh control push makes the re-attach gap visible to Desktop now,
+    // not only when the next Run event happens to arrive.
+    onReattached: ingestHostStatus,
   });
 
-  egressHub.ingest({
-    type: 'host/status',
-    mode: runtime.getMode(),
-    ready: true,
-    mock,
-  });
+  ingestHostStatus();
 
   // ADR 0015: control-lane commands (abort, permission resolve, …) bypass
   // the serialized mutation queue so Stop can reach an in-flight turn.
@@ -134,7 +138,8 @@ export async function commandHostServe(argv: string[]): Promise<void> {
       await dispatcher.drain();
       await mobileAccess?.dispose();
       egressHub.flush();
-      egressChannel.flushNow();
+      localEgress.flushNow();
+      localEgress.dispose();
       authority.dispose();
       await runtime.dispose();
     })();

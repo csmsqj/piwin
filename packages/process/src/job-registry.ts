@@ -41,6 +41,7 @@ import type {
 import { isJobTerminal, validateStartJobInput } from '@piwin/contracts';
 
 import { resolveTrustedCwd } from './cwd-policy.js';
+import { JobLogEmitter } from './job-log-emitter.js';
 import { createJobLogStore, type JobLogStore } from './job-log-store.js';
 import {
   DEFAULT_MAX_RETAINED_TERMINAL_ENTRIES,
@@ -117,10 +118,8 @@ export type JobPolicy = {
 interface JobEntry {
   record: JobRecord;
   supervised: SupervisedProcess | null;
-  /** Pending log text buffered for throttled emission. */
-  pendingLogText: string;
-  pendingLogStream: 'stdout' | 'stderr' | 'system';
-  logFlushTimer: ReturnType<typeof setTimeout> | null;
+  /** Throttled, frame-bounded `job/log` push emission. */
+  logEmitter: JobLogEmitter;
   /** Whether the job was intentionally stopped (vs natural exit). */
   intentionalStop: boolean;
   /** Readiness probe state. */
@@ -219,9 +218,7 @@ export function createJobRegistry(options: JobRegistryOptions = {}): JobControll
     return {
       record,
       supervised: null,
-      pendingLogText: '',
-      pendingLogStream: 'stdout',
-      logFlushTimer: null,
+      logEmitter: createLogEmitter(record.jobId),
       intentionalStop: false,
       readinessProbe: { type: 'none' },
       readinessTimer: null,
@@ -323,54 +320,27 @@ export function createJobRegistry(options: JobRegistryOptions = {}): JobControll
     return count;
   }
 
+  function createLogEmitter(jobId: string): JobLogEmitter {
+    return new JobLogEmitter({
+      jobId,
+      throttleMs: logThrottleMs,
+      now,
+      emit: (chunk) => emit({ type: 'job/log', chunk }),
+    });
+  }
+
   function appendLog(
     entry: JobEntry,
     stream: 'stdout' | 'stderr' | 'system',
     rawText: string,
   ): void {
     if (!rawText) return;
-
     const redactedText = logStore.append(entry.record.jobId, stream, rawText);
-
-    // Throttle log emission to avoid flooding the event stream.
-    entry.pendingLogText += redactedText;
-    if (entry.pendingLogStream !== stream && entry.pendingLogText.length > 0) {
-      // Flush previous stream text before switching.
-      flushLog(entry);
-      entry.pendingLogStream = stream;
-    }
-    scheduleLogFlush(entry);
-  }
-
-  function scheduleLogFlush(entry: JobEntry): void {
-    if (entry.logFlushTimer) return;
-    entry.logFlushTimer = setTimeout(() => {
-      flushLog(entry);
-    }, logThrottleMs);
-    if (typeof entry.logFlushTimer.unref === 'function') {
-      entry.logFlushTimer.unref();
-    }
+    entry.logEmitter.append(stream, redactedText, logStore.getLatestCursor(entry.record.jobId));
   }
 
   function flushLog(entry: JobEntry): void {
-    if (entry.logFlushTimer) {
-      clearTimeout(entry.logFlushTimer);
-      entry.logFlushTimer = null;
-    }
-    const pending = entry.pendingLogText;
-    const stream = entry.pendingLogStream;
-    entry.pendingLogText = '';
-    if (!pending) return;
-
-    const latestCursor = logStore.getLatestCursor(entry.record.jobId);
-    const chunk: JobLogChunk = {
-      jobId: entry.record.jobId,
-      stream,
-      text: pending,
-      at: nowIso(now),
-      cursor: latestCursor,
-    };
-    emit({ type: 'job/log', chunk });
+    entry.logEmitter.flush();
   }
 
   function markTerminal(
@@ -425,10 +395,6 @@ export function createJobRegistry(options: JobRegistryOptions = {}): JobControll
     terminalRetention.retain(entry.record.jobId);
   }
 
-  function scheduleLogFlushEntry(entry: JobEntry): void {
-    scheduleLogFlush(entry);
-  }
-
   // -- start ---------------------------------------------------------------
 
   async function start(input: StartJobInput, admission?: StartJobAdmission): Promise<JobRecord> {
@@ -481,9 +447,7 @@ export function createJobRegistry(options: JobRegistryOptions = {}): JobControll
     const entry: JobEntry = {
       record,
       supervised: null,
-      pendingLogText: '',
-      pendingLogStream: 'stdout',
-      logFlushTimer: null,
+      logEmitter: createLogEmitter(record.jobId),
       intentionalStop: false,
       readinessProbe: input.readinessProbe ?? { type: 'none' },
       readinessTimer: null,
