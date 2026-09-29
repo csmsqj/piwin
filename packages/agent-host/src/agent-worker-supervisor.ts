@@ -294,10 +294,16 @@ export class AgentWorkerSupervisor {
     this.workers.set(workerId, managed);
     this.bySessionGeneration.set(key, workerId);
 
-    // Clean up on exit.
+    // Clean up only if this instance still owns the deterministic worker id.
+    // A released pair can be reacquired before its old process emits `exit`;
+    // that stale callback must not delete the replacement's maps.
     client.on('exit', (code: number | null) => {
-      this.workers.delete(workerId);
-      this.bySessionGeneration.delete(key);
+      if (this.workers.get(workerId) === managed) {
+        this.workers.delete(workerId);
+        if (this.bySessionGeneration.get(key) === workerId) {
+          this.bySessionGeneration.delete(key);
+        }
+      }
       if (!managed.disposed && !this.disposed) {
         this.onWorkerExit?.({
           sessionId,

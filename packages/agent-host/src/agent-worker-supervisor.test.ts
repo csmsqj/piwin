@@ -1,12 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import {
-  DEFAULT_SUBAGENT_MAX_CONCURRENCY,
-  deriveSupervisorMaxWorkers,
-} from '@piwin/contracts';
-import {
-  AgentWorkerSupervisor,
-  WorkerCapacityExhaustedError,
-} from './agent-worker-supervisor.js';
+import { describe, expect, it, vi } from 'vitest';
+import { DEFAULT_SUBAGENT_MAX_CONCURRENCY, deriveSupervisorMaxWorkers } from '@piwin/contracts';
+import { AgentWorkerSupervisor, WorkerCapacityExhaustedError } from './agent-worker-supervisor.js';
 import type { AgentWorkerRuntimeSettings } from './agent-worker-supervisor.js';
 
 const HELLO_FRAME = {
@@ -135,6 +129,29 @@ describe('AgentWorkerSupervisor', () => {
       await supervisor.acquireWorker('session-2', 'generation-1');
     } finally {
       await supervisor.dispose();
+    }
+  }, 10_000);
+
+  it('keeps a replacement mapped when the released worker exits late', async () => {
+    const supervisor = createSupervisor({ maxActiveWorkers: 1, shutdownTimeoutMs: 25 });
+    const first = await supervisor.acquireWorker('session-1', 'generation-1');
+    const closeSpy = vi.spyOn(first, 'close').mockImplementation(() => new Promise(() => {}));
+    const forceKillSpy = vi.spyOn(first, 'forceKill').mockImplementation(() => {});
+
+    try {
+      await supervisor.releaseWorker('session-1', 'generation-1');
+      const replacement = await supervisor.acquireWorker('session-1', 'generation-1');
+      expect(replacement).not.toBe(first);
+
+      first.emit('exit', null);
+
+      expect(supervisor.getWorker('session-1', 'generation-1')).toBe(replacement);
+      expect(supervisor.getStatus().activeWorkers).toBe(1);
+    } finally {
+      closeSpy.mockRestore();
+      forceKillSpy.mockRestore();
+      first.forceKill();
+      await Promise.allSettled([first.close(), supervisor.dispose()]);
     }
   }, 10_000);
 });
