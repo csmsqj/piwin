@@ -42,7 +42,7 @@ export const BUNDLED_DENY: PermissionRule[] = [
     target: {
       kind: 'bash',
       pattern:
-        're:\\brm\\s+(?=(?:-{1,2}[A-Za-z][A-Za-z-]*\\s+)*(?:-[A-Za-z]*r[A-Za-z]*|--recursive)(?:\\s|$))(?=(?:-{1,2}[A-Za-z][A-Za-z-]*\\s+)*(?:-[A-Za-z]*f[A-Za-z]*|--force)(?:\\s|$))(?:-{1,2}[A-Za-z][A-Za-z-]*\\s+)+(?:\\/\\s*$|\\/\\*\\s*$|\\/~\\s*$|~\\s*$)',
+        're:\\brm\\s+(?=(?:-{1,2}[A-Za-z][A-Za-z-]*\\s+)*(?:-[A-Za-z]*r[A-Za-z]*|--recursive)(?:\\s|$))(?=(?:-{1,2}[A-Za-z][A-Za-z-]*\\s+)*(?:-[A-Za-z]*f[A-Za-z]*|--force)(?:\\s|$))(?:-{1,2}[A-Za-z][A-Za-z-]*\\s+)+(?:--\\s+)?(?:\\/\\s*$|\\/\\*\\s*$|\\/~\\s*$|~\\s*$)',
     },
     decision: 'deny',
     reason: 'rm-root',

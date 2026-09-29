@@ -174,6 +174,14 @@ describe('evaluateBashPermission', () => {
       decision: 'deny',
       reason: 'rm-root',
     });
+    expect(evaluateBashPermission('rm -rf -- /', 'bypass')).toEqual({
+      decision: 'deny',
+      reason: 'rm-root',
+    });
+    expect(evaluateBashPermission('rm --recursive --force -- /*', 'bypass')).toEqual({
+      decision: 'deny',
+      reason: 'rm-root',
+    });
   });
 
   it('still only asks for rm recursive+force on ordinary paths', () => {
@@ -182,6 +190,10 @@ describe('evaluateBashPermission', () => {
       reason: 'rm-recursive-force',
     });
     expect(evaluateBashPermission('rm --recursive --force /tmp/cache', 'bypass')).toEqual({
+      decision: 'ask',
+      reason: 'rm-recursive-force',
+    });
+    expect(evaluateBashPermission('rm -rf -- /tmp/cache', 'bypass')).toEqual({
       decision: 'ask',
       reason: 'rm-recursive-force',
     });
